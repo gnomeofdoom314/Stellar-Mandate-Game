@@ -1448,6 +1448,10 @@ function newGame() {
   setupClick(currentMap);
 
   document.getElementById("hexInfo").innerHTML = `
+    <h3>Welcome to Stellar Mandate!</h3>
+    <p>To get started, explore the galaxy by clicking on a hex on the map to the right. This is a Sector, where you will find planets ripe for conquest!</P>
+    <p>Deploy your forces to the planets there to gain influence and claim ownership over Sectors or entire Regions!</p>
+    <p>Play games to earn Credits, which can be used to purchase new dice packs that you can then assign to planets to gain even more influence!</p>
     <h3>Starting Dice</h3>
     <ul>
         ${currentMap.playerDice.map(d => 
