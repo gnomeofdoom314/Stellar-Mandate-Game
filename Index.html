@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Stellar Mandate</title>
+  <style>
+    body {
+      background: #0E0E0F;
+      color: #E0E0E0;
+      font-family: "Segoe UI", sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    .top {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .left {
+      float: left;
+      width: 40%;
+    }
+    .right {
+      float: right;
+      width: 60%;
+    }
+    canvas {
+      background: #111;
+      border: 1px solid #333;
+      margin-top: 20px;
+    }
+    button {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      background: #444;
+      color: #EEE;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #666;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    hr {
+      border: none;
+      border-top: 3px double #333333;
+      color: #333333;
+      overflow: visible;
+      text-align: center;
+      height: 5px;
+      width: 80%;
+    }
+    .shopButton{
+      background:#1A1A1A;
+      border:1px solid #444;
+      padding:15px;
+      border-radius:8px;
+      margin-bottom:20px;
+      text-align:left;
+    }
+
+    #arena {
+        position: relative;
+        width: 640px;
+        height: 640px;
+        margin: 0 auto;
+    }
+    .power-button {
+        position: absolute;
+        width: 96px;      /* fixed width */
+        height: 96px;     /* fixed height — makes it square */
+        padding: 0;        /* remove padding so square stays square */
+        border-radius: 10px;
+        border: none;
+        color: #F0F0F0;
+        cursor: pointer;
+        transform: translate(-50%, -50%);
+        font-size: 14px;
+        display: flex;         /* center text */
+        align-items: center;
+        justify-content: center;
+        text-align: center;    /* allow wrapping */
+        line-height: 1.2;
+        transition: transform 0.1s ease;
+    }
+    .power-button:hover {
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+    .player-selected {
+      border: 6px solid white !important;
+      box-shadow: 0 0 15px rgba(255,255,100,0.6);
+    }
+    .cpu-selected {
+      border: 6px solid #8B1E1E !important; /* Dominion red */
+      box-shadow: 0 0 15px rgba(139,30,30,0.6);
+    }
+    .highlight-arrow {
+      stroke: #FFD95A !important;   /* gold */
+      stroke-width: 3 !important;
+    }
+    .highlight-arrow {
+      marker-end: url(#arrowhead-highlight);
+    }
+    #result {
+        margin-top: 15px;
+        font-size: 18px;
+        line-height: 1.4;
+    }
+    #influence {
+        margin-top: 10px;
+        font-size: 20px;
+        font-weight: 300;
+    }
+    #restart {
+        margin-top: 15px;
+        padding: 8px 18px;
+        font-size: 16px;
+        border: none;
+        border-radius: 6px;
+        background: #444;
+        color: #EEE;
+        cursor: pointer;
+    }
+    #restart:hover {
+        background: #666;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Stellar Mandate</h2>
+
+<section class="top"> <!--Nav Buttons at the top of the page-->
+  <div>
+    <button id="newGameBtn" onclick="newGame()">New Game</button>
+    <button id="saveGameBtn" onclick="saveGame()">Save Game</button>
+    <button id="loadGameBtn" onclick="loadGame()">Load Game</button>
+    <button id="resetGameBtn" onclick="resetGame()">Reset Game</button><br>
+    <button id="diceCollectionBtn" onclick="showDiceCollection()">Dice Collection</button>
+    <button id="availableDiceBtn" onclick="showAvailableDice()">Available Dice</button>
+    <button id="duelBtn" onclick="playDuelGame()">Earn &#10056 Credits!</button>
+  </div>
+
+  <div id="currencyBar"
+       style="
+         margin-top:15px;
+         font-size:20px;
+         font-weight:bold;
+         color:#FFD95A;
+         background:#1A1A1A;
+         padding:10px 20px;
+         border-radius:8px;
+         display:inline-block;
+       ">
+    Credits: &#10056 0
+    <button id="shopBtn" onclick="openShop()">Shop Booster Packs</button>
+  </div>
+</section>
+
+<section class="left"> <!--Info Panel on the left side of the page-->
+  <div id="hexInfo" style="margin-top:20px; text-align:left; width:700px; margin-left:auto; margin-right:auto;"></div>
+</section>
+
+<section class="right"> <!-- Canvas for the map on the right side of the page -->
+  <canvas id="mapCanvas" width="700" height="600"></canvas>
+
+  <div id="shopScreen"
+       style="
+         display:none;
+         background:#111;
+         border:1px solid #333;
+         padding:20px;
+         margin-top:20px;
+         border-radius:10px;
+         color:#EEE;
+         width:700px;
+       ">
+  </div>
+
+  <div id="duelGame"
+       style="
+         display:none;
+         background:#111;
+         border:1px solid #333;
+         padding:20px;
+         margin-top:20px;
+         border-radius:10px;
+         color:#EEE;
+         width:700px;
+       ">
+  </div>
+
+  <div id="hoverTooltip"
+      style="
+        position:absolute;
+        background:#222;
+        color:white;
+        padding:6px 10px;
+        border-radius:6px;
+        font-size:12px;
+        pointer-events:none;
+        display:none;
+        z-index:1000;
+      ">
+  </div>
+</section>
+
+<script>
+const powers = [ //Defines the forces and their colors for the game
+  { name: "Dominion Forces",      color: "#8B1E1E" },
+  { name: "Syndicate Networks",   color: "#C48F2F" },
+  { name: "Concord Diplomats",    color: "#2F6DB3" },
+  { name: "Cipher Operatives",    color: "#4B4B4B" },
+  { name: "Pulse Evangelists",    color: "#7A2FA0" },
+  { name: "Axiom Technologists",  color: "#2FA08C" },
+  { name: "Rift Nomads",          color: "#A06E2F" }
+];
+
+// ------------------------------
+// Button Initialization
+// ------------------------------
+function disableTopButtonsInitially() {
+  const disableList = [
+    "saveGameBtn",
+    "resetGameBtn",
+    "diceCollectionBtn",
+    "availableDiceBtn",
+    "duelBtn",
+    "shopBtn"
+  ];
+
+  disableList.forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = true;
+  });
+}
+// Run on first load
+disableTopButtonsInitially();
+
+function enableTopButtonsAfterGameStart() {
+  const enableList = [
+    "saveGameBtn",
+    "resetGameBtn",
+    "diceCollectionBtn",
+    "availableDiceBtn",
+    "duelBtn",
+    "shopBtn"
+  ];
+
+  enableList.forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = false;
+  });
+}
+
+// ------------------------------
+// Player Credits
+// ------------------------------
+let playerCredits = 0
+function updateCurrencyDisplay() {
+  const bar = document.getElementById("currencyBar");
+  bar.innerHTML = `
+    Credits: &#10056 ${playerCredits}
+    <button id="shopBtn" onclick="openShop()">Shop Booster Packs</button>
+  `;
+}
+
+// ------------------------------
+// 1. Simple Perlin Noise
+// ------------------------------
+class Perlin {
+  constructor() { this.gradients = {}; this.memory = {}; }
+  rand_vect() { const t = Math.random()*2*Math.PI; return {x:Math.cos(t), y:Math.sin(t)}; }
+  dot_prod_grid(x,y,vx,vy){
+    let g=this.gradients[[vx,vy]]||(this.gradients[[vx,vy]]=this.rand_vect());
+    return (x-vx)*g.x + (y-vy)*g.y;
+  }
+  smootherstep(x){ return 6*x**5 - 15*x**4 + 10*x**3; }
+  interp(x,a,b){ return a + this.smootherstep(x)*(b-a); }
+  get(x,y){
+    if(this.memory[[x,y]]) return this.memory[[x,y]];
+    const xf=Math.floor(x), yf=Math.floor(y);
+    const tl=this.dot_prod_grid(x,y,xf,yf);
+    const tr=this.dot_prod_grid(x,y,xf+1,yf);
+    const bl=this.dot_prod_grid(x,y,xf,yf+1);
+    const br=this.dot_prod_grid(x,y,xf+1,yf+1);
+    const xt=this.interp(x-xf,tl,tr);
+    const xb=this.interp(x-xf,bl,br);
+    const v=this.interp(y-yf,xt,xb);
+    this.memory[[x,y]]=v;
+    return v;
+  }
+}
+const perlin = new Perlin();
+
+// ------------------------------
+// 2. Hex math
+// ------------------------------
+const hexSize = 20;
+const sectorHexSize = 50;
+
+function hexToPixel(q, r, size) {
+  return {
+    x: size * Math.sqrt(3) * (q + r/2),
+    y: size * 1.5 * r
+  };
+}
+
+function drawHex(ctx, x, y, size, color) {
+  const angle = Math.PI/3;
+  const rotation = Math.PI/6; // 30 degrees
+
+  ctx.beginPath();
+  for (let i=0;i<6;i++){
+    const px = x + size*Math.cos(angle*i + rotation);
+    const py = y + size*Math.sin(angle*i + rotation);
+    if(i===0) ctx.moveTo(px,py);
+    else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+
+  ctx.lineWidth = 1;
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "black";
+  ctx.stroke();
+}
+
+function drawSelectedBorder(ctx, x, y, size) {
+  const angle = Math.PI / 3;
+  const rotation = Math.PI / 6;
+
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const px = x + size * Math.cos(angle * i + rotation);
+    const py = y + size * Math.sin(angle * i + rotation);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "blue";
+  ctx.stroke();
+}
+
+function hexDistance(a, b) {
+  return (Math.abs(a.q - b.q)
+        + Math.abs(a.r - b.r)
+        + Math.abs((a.q + a.r) - (b.q + b.r))) / 2;
+}
+
+// ------------------------------
+// 3. Generate contiguous organic map
+// ------------------------------
+let currentViewMode = "world"; // "world" or "sector"
+let currentSectorView = null;  
+let selectedPlanetId = null;
+
+function generateMap() {
+  const targetHexCount = 200;
+  const noiseScale = 0.2;
+
+  const queue = [];
+  const visited = new Set();
+  const hexes = [];
+
+  queue.push({q:0, r:0});
+  visited.add("0,0");
+
+  while (queue.length > 0 && hexes.length < targetHexCount) {
+    const {q, r} = queue.shift();
+    const noise = perlin.get(q*noiseScale, r*noiseScale);
+    hexes.push({
+        q,
+        r,
+        noise,
+        sectorScore: 0,
+        sectorOwner: null,
+        hasAssignedDice: false,
+        ownerType: null
+    });
+
+    const neighbors = [
+      {q:q+1, r:r},
+      {q:q-1, r:r},
+      {q:q,   r:r+1},
+      {q:q,   r:r-1},
+      {q:q+1, r:r-1},
+      {q:q-1, r:r+1}
+    ];
+
+    neighbors.forEach(n => {
+      const key = `${n.q},${n.r}`;
+      if (!visited.has(key)) {
+        visited.add(key);
+        const nNoise = perlin.get(n.q*noiseScale, n.r*noiseScale);
+        if (nNoise > -0.3) queue.push(n);
+      }
+    });
+  }
+
+  // ------------------------------
+  // 4. Voronoi Regions
+  // ------------------------------
+  const REGION_COUNT = 5;
+
+  const seeds = [];
+  for (let i = 0; i < REGION_COUNT; i++) {
+    seeds.push(hexes[Math.floor(Math.random() * hexes.length)]);
+  }
+
+  hexes.forEach(hex => {
+    let bestSeed = 0;
+    let bestDist = Infinity;
+
+    seeds.forEach((seed, index) => {
+      const d = hexDistance(hex, seed);
+      if (d < bestDist) {
+        bestDist = d;
+        bestSeed = index;
+      }
+    });
+
+    hex.region = bestSeed;
+  });
+
+  regionScores = Array.from({ length: REGION_COUNT }, () => ({
+    owner: null,
+    score: 0
+  }));
+
+  // ------------------------------
+  // 5. Add planets to each hex (sector)
+  // ------------------------------
+  
+  hexes.forEach((hex, index) => {
+    hex.sectorId = index;
+
+    const planetTypes = ["Planet1", "Planet2", "Planet3", "Planet4", "Planet5", "Planet6"];
+    const moonTypes   = ["Moon1", "Moon2", "Moon3"];
+    const basePlanetCount = Math.floor(Math.random() * 7) + 3; // 3–9
+    hex.planets = [];
+
+    let planetIndex = 0;
+
+    for (let i = 0; i < basePlanetCount; i++) {
+      const imageId = planetTypes[Math.floor(Math.random() * planetTypes.length)];
+
+      // Create the main planet
+      const planet = {
+        id: `P-${index}-${planetIndex++}`,
+        name: `Planet ${planetIndex}`,
+        imageId,
+        hasPosition: false,
+        assignedDice: [],
+        hasAssignedDice: false,
+        ownerType: null
+      };
+
+      hex.planets.push(planet);
+
+      // --- Special Case: Planet1 gets 1 moon ---
+      if (imageId === "Planet1") {
+        const moonImage = moonTypes[Math.floor(Math.random() * moonTypes.length)];
+
+        hex.planets.push({
+          id: `P-${index}-${planetIndex++}`,
+          name: `Moon ${planetIndex}`,
+          imageId: moonImage,
+          parentId: planet.id,
+          hasPosition: false,
+          assignedDice: [],
+          hasAssignedDice: false,
+          ownerType: null
+        });
+      }
+
+      // --- Special Case: Planet5 gets 4–6 moons ---
+      if (imageId === "Planet5") {
+        const moonCount = Math.floor(Math.random() * 3) + 4; // 4–6 moons
+
+        for (let m = 0; m < moonCount; m++) {
+          const moonImage = moonTypes[Math.floor(Math.random() * moonTypes.length)];
+
+          hex.planets.push({
+            id: `P-${index}-${planetIndex++}`,
+            name: `Moon ${planetIndex}`,
+            imageId: moonImage,
+            parentId: planet.id,
+            hasPosition: false,
+            assignedDice: [],
+            hasAssignedDice: false,
+            ownerType: null
+          });
+        }
+      }
+    }
+  });
+
+  return { hexes, REGION_COUNT };
+}
+
+// ------------------------------
+// 6. Draw map
+// ------------------------------
+const planetImages = {};
+function loadPlanetImages() {
+  const ids = [
+    "Planet1", "Planet2", "Planet3", "Planet4", "Planet5", "Planet6",
+    "Moon1", "Moon2", "Moon3"
+  ];
+
+  ids.forEach(id => {
+    const img = new Image();
+    img.src = `assets/planets/${id}.png`;
+    planetImages[id] = img;
+  });
+}
+loadPlanetImages();
+
+function drawMap(mapData) {
+  const canvas = document.getElementById("mapCanvas");
+  const ctx = canvas.getContext("2d");
+
+  const regionColors = [
+    "rgb(180,150,150)",
+    "rgb(150,180,150)",
+    "rgb(150,150,180)",
+    "rgb(180,180,150)",
+    "rgb(180,150,180)"
+  ];
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  mapData.hexes.forEach(hex => {
+    const {x,y} = hexToPixel(hex.q, hex.r, hexSize);
+    const cx = x + canvas.width/2;
+    const cy = y + canvas.height/2;
+
+    const color = regionColors[hex.region];
+    drawHex(ctx, cx, cy, hexSize, color);
+
+    hex.pixelX = cx;
+    hex.pixelY = cy;
+
+    if (hex.hasAssignedDice) {
+      drawOverlayIcon(ctx, cx, cy, hexSize, hex.ownerType);
+    }
+  });
+}
+
+function drawOverlayIcon(ctx, x, y, size, ownerType) {
+  const radius = Math.sqrt(size) * 1.7;
+  const offsetY = size * 0.45;
+
+  ctx.beginPath();
+  ctx.arc(x, y + offsetY, radius, 0, 2 * Math.PI);
+
+  ctx.fillStyle = ownerType === "player" ? "#2F6DB3" : "#8B1E1E";
+  ctx.fill();
+
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawSectorMap(hex) {
+  const canvas = document.getElementById("mapCanvas");
+  const ctx = canvas.getContext("2d");
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const planets = hex.planets;
+
+
+  const mainPlanets = hex.planets.filter(p => !p.parentId);
+  const moonPlanets = hex.planets.filter(p => p.parentId);
+
+  const mainCount = mainPlanets.length;
+
+  // radius of the main ring
+  const mainRadius = 2; // axial distance
+
+  mainPlanets.forEach((planet, i) => {
+    const angle = (2 * Math.PI * i) / mainCount;
+
+    // convert angle → axial coordinates
+    const q = Math.round(mainRadius * Math.cos(angle));
+    const r = Math.round(mainRadius * Math.sin(angle));
+
+    if (!planet.hasPosition) {
+      const spot = findFreeSpot(hex.planets, q, r);
+      planet.q = spot.q;
+      planet.r = spot.r;
+      planet.hasPosition = true;
+    }
+  });
+
+  moonPlanets.forEach((moon, i) => {
+    const parent = hex.planets.find(p => p.id === moon.parentId);
+
+    const moonIndex = i; // or use a counter per parent
+    const moonCount = moonPlanets.filter(m => m.parentId === parent.id).length;
+
+    const angle = (2 * Math.PI * moonIndex) / moonCount;
+
+    const moonRadius = 1; // small ring around parent
+
+    let q = parent.q + Math.round(moonRadius * Math.cos(angle));
+    let r = parent.r + Math.round(moonRadius * Math.sin(angle));
+
+    if (!moon.hasPosition) {
+      const spot = findFreeSpot(hex.planets, q, r);
+      moon.q = spot.q;
+      moon.r = spot.r;
+      moon.hasPosition = true;
+    }
+  });
+
+  hex.planets.forEach(planet => {
+    const { x, y } = hexToPixel(planet.q, planet.r, sectorHexSize);
+
+    planet.pixelX = x + canvas.width / 2;
+    planet.pixelY = y + canvas.height / 2;
+
+    // draw hex
+    const isSelected = (planet.id === selectedPlanetId);
+    const fillColor = isSelected ? "#777" : "#333";
+
+    drawHex(ctx, planet.pixelX, planet.pixelY, sectorHexSize, fillColor);
+
+    const img = planetImages[planet.imageId];
+    if (img.complete) {
+      ctx.drawImage(
+        img,
+        planet.pixelX - sectorHexSize * 0.6,
+        planet.pixelY - sectorHexSize * 0.6,
+        sectorHexSize * 1.2,
+        sectorHexSize * 1.2
+      );
+    } else {
+      img.onload = () => {
+        ctx.drawImage(
+          img,
+          planet.pixelX - sectorHexSize * 0.6,
+          planet.pixelY - sectorHexSize * 0.6,
+          sectorHexSize * 1.2,
+          sectorHexSize * 1.2
+        );
+      };
+    }
+
+    if (isSelected) {
+      drawSelectedBorder(ctx, planet.pixelX, planet.pixelY, sectorHexSize);
+    }
+
+    if (planet.hasAssignedDice) {
+      drawOverlayIcon(ctx, planet.pixelX, planet.pixelY, sectorHexSize, planet.ownerType);
+    }
+  });
+
+  drawBackArrow(ctx);
+}
+function isOccupied(planets, q, r) {
+  return planets.some(p => p.q === q && p.r === r);
+}
+function findFreeSpot(planets, q, r) {
+  if (!isOccupied(planets, q, r)) return { q, r };
+
+  // Spiral search outward
+  const directions = [
+    {q: 1, r: 0}, {q: 1, r: -1}, {q: 0, r: -1},
+    {q: -1, r: 0}, {q: -1, r: 1}, {q: 0, r: 1}
+  ];
+
+  let radius = 1;
+
+  while (radius < 10) { // safe limit
+    for (let d = 0; d < 6; d++) {
+      for (let step = 0; step < radius; step++) {
+        q += directions[d].q;
+        r += directions[d].r;
+
+        if (!isOccupied(planets, q, r)) {
+          return { q, r };
+        }
+      }
+    }
+    radius++;
+  }
+
+  // fallback (should never happen)
+  return { q: q + 1, r };
+}
+
+
+
+function drawBackArrow(ctx) {
+  ctx.fillStyle = "#fff";
+  ctx.font = "24px sans-serif";
+  ctx.fillText("⬅", 20, 40);
+
+  // store clickable area
+  window.backArrowBounds = { x: 20, y: 20, w: 40, h: 40 };
+}
+
+// ------------------------------
+// 7. Click interaction
+// ------------------------------
+function getHexAtPixel(mapData, px, py) {
+  for (const hex of mapData.hexes) {
+    const dx = px - hex.pixelX;
+    const dy = py - hex.pixelY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if (dist < hexSize * 1.1) {
+      return hex;
+    }
+  }
+  return null;
+}
+
+function getPlanetAtPixel(hex, px, py, size) {
+  for (const planet of hex.planets) {
+    const dx = px - planet.pixelX;
+    const dy = py - planet.pixelY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if (dist < size) return planet;
+  }
+  return null;
+}
+
+function setupClick(mapData) {
+  const canvas = document.getElementById("mapCanvas");
+  const info = document.getElementById("hexInfo");
+
+  canvas.onclick = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+
+    if (currentViewMode === "world") {
+      const hex = getHexAtPixel(mapData, px, py);
+
+      if (hex) {
+        currentViewMode = "sector";
+        currentSectorView = hex;
+
+        renderSectorInfo(hex); // Existing text panel, contains Back Button. Will eventually be obsolete.
+        drawSectorMap(hex);
+      };
+    } else if (currentViewMode === "sector") {
+      const b = window.backArrowBounds;
+      if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) {
+        returnToWorldMap();
+        return;
+      }
+
+      // Planet clicks
+      const planet = getPlanetAtPixel(currentSectorView, px, py, sectorHexSize);
+      if (planet) {
+        viewPlanet(currentSectorView.sectorId, planet.id);
+        selectedPlanetId = planet.id;
+        drawSectorMap(currentSectorView);
+        return;
+      }
+    }
+  }
+
+  canvas.addEventListener("mousemove", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+
+    handleHover(px, py, rect.left, e.clientY);
+  });
+}
+
+function handleHover(px, py, lft, offY) {
+  const tooltip = document.getElementById("hoverTooltip");
+
+  if (currentViewMode === "world") {
+    const hex = getHexAtPixel(currentMap, px, py);
+    if (hex) {
+      tooltip.style.display = "block";
+      tooltip.style.left = (lft - 150) + "px";
+      tooltip.style.top = (offY - 100) + "px";
+
+      tooltip.innerHTML = `
+        <strong>Sector ${hex.sectorId}</strong><br>
+        Region: ${hex.region}<br>
+        <hr />
+        <strong>Region Control</strong><br>
+        Owner: ${regionScores[hex.region].owner ?? "None"}<br>
+        Score: ${regionScores[hex.region].score}<br>
+        <hr />
+        <strong>Sector Control</strong><br>
+        Num Planets: ${hex.planets.length}<br>
+        Owner: ${hex.sectorOwner ?? "None"}<br>
+        Score: ${hex.sectorScore}
+      `;
+      return;
+    }
+  }
+
+  if (currentViewMode === "sector") {
+    const planet = getPlanetAtPixel(currentSectorView, px, py, sectorHexSize);
+    if (planet) {
+      const assigned = planet.assignedDice;
+      tooltip.style.display = "block";
+      tooltip.style.left = (lft - 150) + "px";
+      tooltip.style.top = (offY - 100) + "px";
+
+      tooltip.innerHTML = `
+        <strong>${planet.name}</strong><br>
+        Image: ${planet.imageId}<br>
+        <hr />
+        <strong>Sector Control</strong><br>
+        Owner: ${currentSectorView.sectorOwner ?? "None"}<br>
+        Score: ${currentSectorView.sectorScore}<br>
+        <hr />
+        <strong>Planet Control</strong><br>
+        Owner: ${planet.ownerType ?? "None"}<br>
+        Dice: <br>
+          <ul>
+            ${assigned.length === 0
+              ? "<li>None</li>"
+              : assigned.map(d => `
+                  <li style="color:${d.color}; font-weight:bold;">
+                    ${d.name}
+                  </li>
+                `).join("")
+            }
+          </ul>
+      `;
+      return;
+    }
+  }
+
+  // If nothing is hovered
+  tooltip.style.display = "none";
+}
+
+function renderSectorInfo(hex) {
+  document.getElementById("hexInfo").innerHTML = `
+      <h3>Sector ${hex.sectorId}</h3>
+      <p>Region: ${hex.region}</p>
+
+      <hr />
+
+      <h4>Region Control</h4>
+        <p>Owner: ${regionScores[hex.region].owner ?? "None"}</p>
+        <p>Score: ${regionScores[hex.region].score}</p>
+      
+      <hr />
+
+      <h4>Sector Control</h4>
+        <p>Owner: ${hex.sectorOwner ?? "None"}</p>
+        <p>Score: ${hex.sectorScore}</p>
+
+      <hr />
+      <button onclick="returnToWorldMap()">⬅ Back to Region Map</button>
+    `;
+}
+
+function returnToWorldMap() {
+  currentViewMode = "world";
+  currentSectorView = null;
+
+  drawMap(currentMap); // redraw world map
+  document.getElementById("hexInfo").innerHTML = ""; //clear info panel
+}
+
+function viewPlanet(sectorId, planetId) {
+  const hex = currentMap.hexes.find(h => h.sectorId == sectorId);
+  const planet = hex.planets.find(p => p.id == planetId);
+
+  const info = document.getElementById("hexInfo");
+
+  const assigned = planet.assignedDice;
+
+  const assignButton = assigned.length === 0
+    ? `<button onclick="assignDiceToPlanet('${sectorId}', '${planetId}')">
+         Assign Dice
+       </button>`
+    : `<button disabled style="opacity:0.5;">
+         Dice Assigned
+       </button>`;
+
+  info.innerHTML = `
+    <h3>${planet.name}</h3>
+    <p><strong>Sector:</strong> ${sectorId}</p>
+    <p><strong>Region:</strong> ${hex.region}</p>
+
+    <hr />
+
+    <h4>Region Control</h4>
+      <p>Owner: ${regionScores[hex.region].owner ?? "None"}</p>
+      <p>Score: ${regionScores[hex.region].score}</p>
+    
+    <hr />
+
+    <h4>Sector Control</h4>
+      <p>Owner: ${hex.sectorOwner ?? "None"}</p>
+      <p>Score: ${hex.sectorScore}</p>
+
+    <hr />
+
+    <h4>Assigned Dice</h4>
+    <ul>
+      ${assigned.length === 0
+        ? "<li>None</li>"
+        : assigned.map(d => `
+            <li style="color:${d.color}; font-weight:bold;">
+              ${d.name}
+            </li>
+          `).join("")
+      }
+    </ul>
+
+    ${assignButton}
+  `;
+}
+
+// ------------------------------
+// 8. Dice Generation
+// ------------------------------
+const dicePackTypes = {
+  standard: {
+    name: "Standard Pack",
+    description: "Balanced rarity curve with common dice.",
+    cost: 100,
+    weights: [
+      { sides: 4,  weight: 0.40 },
+      { sides: 6,  weight: 0.25 },
+      { sides: 8,  weight: 0.175 },
+      { sides: 10, weight: 0.10 },
+      { sides: 12, weight: 0.05 },
+      { sides: 20, weight: 0.025 }
+    ]
+  },
+
+  forcedFaction: {
+    name: "Pick Your Faction Pack",
+    description: "A standard pack, but all dice come from a faction you choose.",
+    cost: 200,
+    requiresFaction: true,
+    weights: [
+      { sides: 4,  weight: 0.40 },
+      { sides: 6,  weight: 0.25 },
+      { sides: 8,  weight: 0.175 },
+      { sides: 10, weight: 0.10 },
+      { sides: 12, weight: 0.05 },
+      { sides: 20, weight: 0.025 }
+    ]
+  },
+  
+  rare: {
+    name: "Rare Pack",
+    description: "Higher chance of better dice.",
+    cost: 300,
+    weights: [
+      { sides: 4,  weight: 0.20 },
+      { sides: 6,  weight: 0.20 },
+      { sides: 8,  weight: 0.20 },
+      { sides: 10, weight: 0.20 },
+      { sides: 12, weight: 0.15 },
+      { sides: 20, weight: 0.05 }
+    ]
+  },
+
+  moves: {
+    name: "Make Some Moves Pack",
+    description: "High chance of powerful dice. Only d8 or better!",
+    cost: 1000,
+    weights: [
+      { sides: 4,  weight: 0.00 },
+      { sides: 6,  weight: 0.00 },
+      { sides: 8,  weight: 0.35 },
+      { sides: 10, weight: 0.25 },
+      { sides: 12, weight: 0.20 },
+      { sides: 20, weight: 0.20 }
+    ]
+  }
+};
+
+function pickWeightedDie(weights) {
+  const roll = Math.random();
+  let cumulative = 0;
+
+  for (const entry of weights) {
+    cumulative += entry.weight;
+    if (roll <= cumulative) {
+      return entry.sides;
+    }
+  }
+
+  // fallback (should never hit)
+  return weights[0].sides;
+}
+
+function generateRandomDice(count = 10, packType = "standard", forcedFaction = null) {
+  const dice = [];
+  const pack = dicePackTypes[packType];
+
+  for (let i = 0; i < count; i++) {
+    const sides = pickWeightedDie(pack.weights);
+
+    // If faction is forced, find the matching power entry
+    let powerIndex;
+    if (forcedFaction) {
+      powerIndex = powers.findIndex(p => p.name === forcedFaction);
+    } else {
+      powerIndex = Math.floor(Math.random() * powers.length);
+    }
+
+    const power = powers[powerIndex];
+
+    dice.push({
+      id: `D-${Date.now()}-${i}`,
+      sides,
+      power: powerIndex,
+      ownerId: "player",
+      name: `${power.name} d${sides}`,
+      color: power.color
+    });
+  }
+
+  return dice;
+}
+
+// ------------------------------
+// 9. Die Assignment
+// ------------------------------
+function assignDiceToPlanet(sectorId, planetId) {
+  diceSelectionContext = {
+    sectorId,
+    planetId,
+    selectedCategories: []
+  };
+
+  showAvailableDice(true); // selection mode
+}
+
+function confirmDiceAssignment() {
+  const ctx = diceSelectionContext;
+  if (!ctx) return;
+
+  const hex = currentMap.hexes.find(h => h.sectorId == ctx.sectorId);
+  const planet = hex.planets.find(p => p.id == ctx.planetId);
+
+  ctx.selectedCategories.forEach(cat => {
+    const { powerIndex, sizeIndex } = cat;
+
+    const sizes = [4, 6, 8, 10, 12, 20];
+    const targetSize = sizes[sizeIndex];
+
+    // Find all matching dice
+    const candidates = currentMap.availableDice.filter(d =>
+      d.power === powerIndex && d.sides === targetSize
+    );
+
+    if (candidates.length > 0) {
+      // Pick one (random for now)
+      const die = candidates[Math.floor(Math.random() * candidates.length)];
+
+      // Assign it
+      planet.assignedDice.push(die);
+      if (planet.assignedDice.length > 0) {
+        hex.hasAssignedDice = true;
+        hex.ownerType = "player";
+        planet.hasAssignedDice = true;
+        planet.ownerType = "player";
+        drawSectorMap(hex);
+      }
+
+      // Remove from available pool
+      currentMap.availableDice = currentMap.availableDice.filter(d => d.id !== die.id);
+
+      // ⭐ Add scoring
+      hex.sectorScore += die.sides;
+      hex.sectorOwner = "Player";
+
+      regionScores[hex.region].score += die.sides;
+      regionScores[hex.region].owner = "Player";
+    }
+  });
+
+  diceSelectionContext = null;
+
+  viewPlanet(ctx.sectorId, ctx.planetId);
+}
+
+// ------------------------------
+// 10. Dice Collection
+// ------------------------------
+let diceSelectionContext = {
+  sectorId: null,
+  planetId: null,
+  selectedCategories: []  // each entry: { powerIndex, sizeIndex }
+};
+
+function showDiceCollection() {
+  if (!currentMap || !currentMap.playerDice) {
+    document.getElementById("hexInfo").innerHTML = "<p>No dice available.</p>";
+    return;
+  }
+
+  // Die sizes (columns)
+  const sizes = [4, 6, 8, 10, 12, 20];
+
+  // Initialize matrix: 7 powers × 6 sizes
+  const matrix = Array.from({ length: powers.length }, () =>
+    Array.from({ length: sizes.length }, () => 0)
+  );
+
+  // Count dice
+  currentMap.playerDice.forEach(die => {
+    const powerIndex = die.power;
+    const sizeIndex = sizes.indexOf(die.sides);
+    if (sizeIndex !== -1) {
+      matrix[powerIndex][sizeIndex]++;
+    }
+  });
+
+  // Build HTML table
+  let html = `
+    <h3>Dice Collection</h3>
+    <table style="border-collapse: collapse; width: 80%; text-align: center;">
+      <tr>
+        <th style="padding: 6px; border: 1px solid #555;"></th>
+        ${sizes.map(s => `<th style="padding: 6px; border: 1px solid #555;">d${s}</th>`).join("")}
+      </tr>
+  `;
+
+  matrix.forEach((row, powerIndex) => {
+    html += `
+      <tr>
+        <td style="padding: 6px; border: 1px solid #555; color:${powers[powerIndex].color}; font-weight:bold;">
+          ${powers[powerIndex].name}
+        </td>
+        ${row.map(count => `
+          <td style="padding: 6px; border: 1px solid #555;">${count}</td>
+        `).join("")}
+      </tr>
+    `;
+  });
+
+  html += "</table>";
+
+  document.getElementById("hexInfo").innerHTML = html;
+}
+
+function showAvailableDice(selectionMode = false) {
+  const info = document.getElementById("hexInfo");
+
+  if (!currentMap || !currentMap.availableDice) {
+    info.innerHTML = "<p>No available dice.</p>";
+    return;
+  }
+
+  const sizes = [4, 6, 8, 10, 12, 20];
+
+  // Build matrix of dice lists
+  const matrix = Array.from({ length: powers.length }, () =>
+    Array.from({ length: sizes.length }, () => [])
+  );
+
+  currentMap.availableDice.forEach(die => {
+    const powerIndex = die.power;
+    const sizeIndex = sizes.indexOf(die.sides);
+    matrix[powerIndex][sizeIndex].push(die);
+  });
+
+  let html = `
+    <h3>${selectionMode ? "Select Dice to Assign" : "Available Dice"}</h3>
+    <table style="border-collapse: collapse; width: 80%; text-align: center;">
+      <tr>
+        <th style="padding: 6px; border: 1px solid #555;"></th>
+        ${sizes.map(s => `<th style="padding: 6px; border: 1px solid #555;">d${s}</th>`).join("")}
+      </tr>
+  `;
+
+  matrix.forEach((row, powerIndex) => {
+    html += `
+      <tr>
+        <td style="padding: 6px; border: 1px solid #555; color:${powers[powerIndex].color}; font-weight:bold;">
+          ${powers[powerIndex].name}
+        </td>
+        ${row.map((diceList, sizeIndex) => `
+          <td style="padding: 6px; border: 1px solid #555;">
+            ${diceList.length > 0 ? diceList.length : ""}
+            ${selectionMode && diceList.length > 0 ? `
+              <br>
+              <input type="checkbox"
+                     onchange="toggleDiceCategorySelection(${powerIndex}, ${sizeIndex})">
+            ` : ""}
+          </td>
+        `).join("")}
+      </tr>
+    `;
+  });
+
+  html += "</table>";
+
+  if (selectionMode) {
+    html += `
+      <button onclick="confirmDiceAssignment()">Confirm Assignment</button>
+      <button onclick="cancelAssignment()">Cancel</button>
+    `;
+  }
+
+  info.innerHTML = html;
+}
+
+function cancelAssignment() {
+  selectedPlanetId = null;
+
+  // Redraw the sector map without highlight
+  drawSectorMap(currentSectorView);
+
+  // Clear planet info panel if you want
+  const info = document.getElementById("hexInfo");
+  info.innerHTML = "";
+}
+
+function toggleDiceCategorySelection(powerIndex, sizeIndex) {
+  const ctx = diceSelectionContext;
+  if (!ctx) return;
+
+  const key = `${powerIndex}-${sizeIndex}`;
+  const existing = ctx.selectedCategories.find(c => c.key === key);
+
+  if (!existing) {
+    if (ctx.selectedCategories.length < 3) {
+      ctx.selectedCategories.push({ key, powerIndex, sizeIndex });
+    } else {
+      alert("You can only assign up to 3 dice.");
+      // Uncheck the box
+      document.querySelector(`input[onchange="toggleDiceCategorySelection(${powerIndex}, ${sizeIndex})"]`).checked = false;
+    }
+  } else {
+    ctx.selectedCategories = ctx.selectedCategories.filter(c => c.key !== key);
+  }
+}
+
+// ------------------------------
+// 11. Gacha Shop
+// ------------------------------
+function openShop() {
+  const canvas = document.getElementById("mapCanvas");
+  const shop = document.getElementById("shopScreen");
+  const duel = document.getElementById("duelGame");
+
+  canvas.style.display = "none";
+  duel.style.display = "none";
+  shop.style.display = "block";
+
+  let html = `<h2>Booster Pack Shop</h2> <button onclick="returnToMap()">Return to World Map</button>`;
+
+  for (const key in dicePackTypes) {
+    const pack = dicePackTypes[key];
+
+    html += `
+      <div class="shopButton">
+        <h3>${pack.name}</h3>
+        <p>${pack.description}</p>
+        <p>Cost: <span style="color:#FFD95A; font-weight:bold;">${pack.cost} Credits</span></p>
+    `;
+    if (pack.requiresFaction) {
+    html += `
+      <label>Select Faction:</label>
+      <select id="factionSelect_${key}">
+        ${powers.map(p => `
+          <option value="${p.name}">${p.name}</option>
+        `).join("")}
+      </select>
+      <br><br>
+    `;
+    }
+    html += `
+        <button onclick="buyBoosterPack('${key}')">Buy Pack</button>
+      </div>
+    `;
+  }
+
+  shop.innerHTML = html;
+}
+
+function buyBoosterPack(packType = "standard") {
+  const pack = dicePackTypes[packType];
+
+  if (playerCredits < pack.cost) {
+    alert("Not enough credits!");
+    return;
+  }
+
+  playerCredits -= pack.cost;
+  updateCurrencyDisplay();
+
+  let forcedFaction = null;
+
+  if (pack.requiresFaction) {
+    const select = document.getElementById(`factionSelect_${packType}`);
+    forcedFaction = select.value;
+  }
+
+  openBoosterPack(packType, forcedFaction); // your existing booster logic
+}
+
+function returnToMap() {
+  const canvas = document.getElementById("mapCanvas");
+  const shop = document.getElementById("shopScreen");
+  const duel = document.getElementById("duelGame");
+
+  duel.style.display = "none";
+  shop.style.display = "none";
+  canvas.style.display = "block";
+
+  drawMap(currentMap);
+  document.getElementById("hexInfo").innerHTML = ""; //clear info panel
+}
+
+// ------------------------------
+// 12. Gacha
+// ------------------------------
+function openBoosterPack(packType, forcedFaction = null) {
+  if (!currentMap) {
+    alert("Start a new game first.");
+    return;
+  }
+
+  // Booster pack contains 3 dice
+  const newDice = generateRandomDice(3, packType, forcedFaction);
+
+  // Add to total collection
+  currentMap.playerDice.push(...newDice);
+
+  // Add to available pool
+  currentMap.availableDice.push(...newDice);
+
+  // Display results
+  showBoosterResults(newDice);
+}
+
+function showBoosterResults(newDice) {
+  const info = document.getElementById("hexInfo");
+
+  info.innerHTML = `
+    <h3>Booster Pack Results</h3>
+    <ul>
+      ${newDice.map(d => `
+        <li style="color:${d.color}; font-weight:bold;">
+          ${d.name}
+        </li>
+      `).join("")}
+    </ul>
+
+    <button onclick="showAvailableDice()">View Available Dice</button>
+  `;
+}
+
+// ------------------------------
+// 13. Duel Game
+// ------------------------------
+let buttonsDiv = null;
+let linesGroup = null;
+let resultDiv = null;
+let influenceDiv = null;
+
+function playDuelGame() {
+  const canvas = document.getElementById("mapCanvas");
+  const shop = document.getElementById("shopScreen");
+  const duel = document.getElementById("duelGame");
+
+  canvas.style.display = "none";
+  shop.style.display = "none";
+  duel.style.display = "block";
+
+  const info = document.getElementById("hexInfo");
+  info.innerHTML = `
+        <h2>Influence Duel</h2>
+        <button onclick="returnToMap()">Return to World Map</button><br>
+        <div id="result"></div>
+        <div id="influence"></div>
+        <button id="restart" onclick="restartGame()">Restart Duel</button>
+      `;
+
+  startDuel();
+}
+
+function startDuel() {
+  playerInfluence = 0;
+  cpuInfluence = 0;
+
+  const duel = document.getElementById("duelGame");
+  duel.innerHTML =`
+    <div id="arena">
+      <svg width="640" height="640" style="position:absolute; top:0; left:0;">
+        <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7"
+                refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#777" />
+        </marker>
+        <marker id="arrowhead-highlight" markerWidth="10" markerHeight="7"
+                refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#FFD95A" />
+        </marker>
+        </defs>
+        <g id="lines" stroke="#777" stroke-width="2" marker-end="url(#arrowhead)"></g>
+      </svg>
+      <div id="buttons"></div>
+    </div>
+  `;
+
+  buttonsDiv = document.getElementById("buttons");
+  linesGroup = document.getElementById("lines");
+  resultDiv = document.getElementById("result");
+  influenceDiv = document.getElementById("influence");
+
+  buttonsDiv.innerHTML = "";
+  linesGroup.innerHTML = "";
+  resultDiv.innerHTML = "";
+  influenceDiv.innerHTML = ""
+
+  placeButtons();
+  drawArrows();
+}
+
+// ------------------------------
+// 14. Game Management
+// ------------------------------
+let currentMap = null;
+
+function newGame() {
+  enableTopButtonsAfterGameStart();
+  currentMap = generateMap();
+  currentMap.playerDice = generateRandomDice(10, "standard");
+  currentMap.availableDice = [...currentMap.playerDice];
+  drawMap(currentMap);
+  setupClick(currentMap);
+
+  document.getElementById("hexInfo").innerHTML = `
+    <h3>Starting Dice</h3>
+    <ul>
+        ${currentMap.playerDice.map(d => 
+        `<li style="color:${d.color}; font-weight:bold;">
+            ${d.name}
+        </li>`
+        ).join("")}
+    </ul>
+  `;
+
+  playerCredits = 500; // starting money
+  updateCurrencyDisplay();
+}
+
+function saveGame() {
+  if (!currentMap) return alert("No map to save.");
+  localStorage.setItem("savedMap", JSON.stringify(currentMap));
+  localStorage.setItem("regionScores", JSON.stringify(regionScores));
+  localStorage.setItem("playerCredits", JSON.stringify(playerCredits));
+  alert("Game saved.");
+}
+
+function loadGame() {
+  const saved = localStorage.getItem("savedMap");
+  if (!saved) return alert("No saved game found.");
+
+  enableTopButtonsAfterGameStart();
+
+  currentMap = JSON.parse(saved);
+  regionScores = JSON.parse(localStorage.getItem("regionScores"));
+  playerCredits = JSON.parse(localStorage.getItem("playerCredits")) ?? 500;
+  drawMap(currentMap);
+  setupClick(currentMap);
+
+  if (currentMap.playerDice) {
+    document.getElementById("hexInfo").innerHTML = `
+      <h3>Loaded Dice</h3>
+      <ul>
+        ${currentMap.playerDice.map(d => 
+            `<li style="color:${d.color}; font-weight:bold;">
+                ${d.name}
+            </li>`
+        ).join("")}
+      </ul>
+    `;
+  }
+
+  updateCurrencyDisplay();
+}
+
+function resetGame() {
+  localStorage.removeItem("savedMap");
+  localStorage.removeItem("regionScores");
+  localStorage.removeItem("playerCredits");
+  currentMap = null;
+  playerCredits = 0;
+  updateCurrencyDisplay();
+
+  const canvas = document.getElementById("mapCanvas");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  document.getElementById("hexInfo").innerHTML = "";
+  alert("Game reset.");
+}
+
+</script>
+<script src="duel.js"></script>
+
+</body>
+</html>
