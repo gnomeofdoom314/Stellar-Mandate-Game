@@ -169,7 +169,7 @@
     <button id="resetGameBtn" onclick="resetGame()">Reset Game</button><br>
     <button id="diceCollectionBtn" onclick="showDiceCollection()">Dice Collection</button>
     <button id="availableDiceBtn" onclick="showAvailableDice()">Available Dice</button>
-    <button id="duelBtn" onclick="playDuelGame()">Earn &#10056 Credits!</button>
+    <button id="duelBtn" onclick="playDuelGame()">Minigame - Earn &#10056 Credits!</button>
   </div>
 
   <div id="currencyBar"
@@ -409,10 +409,12 @@ function generateMap() {
         q,
         r,
         noise,
-        sectorScore: 0,
+        sectorInfluence: 0,
         sectorOwner: null,
         hasAssignedDice: false,
-        ownerType: null
+        ownerType: null,
+        politicalProfile: ["None", "None", "None"],
+        lastPowerActivity: [],
     });
 
     const neighbors = [
@@ -459,9 +461,11 @@ function generateMap() {
     hex.region = bestSeed;
   });
 
-  regionScores = Array.from({ length: REGION_COUNT }, () => ({
+  regionInfluence = Array.from({ length: REGION_COUNT }, () => ({
     owner: null,
-    score: 0
+    influence: 0,
+    politicalProfile: ["None", "None", "None"],
+    lastPowerActivity: [],
   }));
 
   // ------------------------------
@@ -829,13 +833,13 @@ function handleHover(px, py, pagx, pagy) {
         Region: ${hex.region}<br>
         <hr />
         <strong>Region Control</strong><br>
-        Owner: ${regionScores[hex.region].owner ?? "None"}<br>
-        Score: ${regionScores[hex.region].score}<br>
+        Owner: ${regionInfluence[hex.region].owner ?? "None"}<br>
+        Influence: ${regionInfluence[hex.region].influence}<br>
         <hr />
         <strong>Sector Control</strong><br>
         Num Planets: ${hex.planets.length}<br>
         Owner: ${hex.sectorOwner ?? "None"}<br>
-        Score: ${hex.sectorScore}
+        Influence: ${hex.sectorInfluence}
       `;
       return;
     }
@@ -855,7 +859,7 @@ function handleHover(px, py, pagx, pagy) {
         <hr />
         <strong>Sector Control</strong><br>
         Owner: ${currentSectorView.sectorOwner ?? "None"}<br>
-        Score: ${currentSectorView.sectorScore}<br>
+        Influence: ${currentSectorView.sectorInfluence}<br>
         <hr />
         <strong>Planet Control</strong><br>
         Owner: ${planet.ownerType ?? "None"}<br>
@@ -887,15 +891,40 @@ function renderSectorInfo(hex) {
       <hr />
 
       <h4>Region Control</h4>
-        <p>Owner: ${regionScores[hex.region].owner ?? "None"}</p>
-        <p>Score: ${regionScores[hex.region].score}</p>
-      
+        <p>Owner: ${regionInfluence[hex.region].owner ?? "None"}</p>
+        <p>Influence: ${regionInfluence[hex.region].influence}</p>
+        <p>Political Profile:<br> ${regionInfluence[hex.region].politicalProfile.join(", ")}</p>
+        <p>Regional Faction Strength</p>
+        <ul>
+          ${powers.map((p, index) => {
+            const strength = getFactionStrength(
+              { type: "region", regionIndex: hex.region },
+              index
+            );
+            return `<li style="color:${p.color}; font-weight:bold;">
+                      ${p.name}: ${strength}
+                    </li>`;
+          }).join("")}
+        </ul>
       <hr />
 
       <h4>Sector Control</h4>
         <p>Owner: ${hex.sectorOwner ?? "None"}</p>
-        <p>Score: ${hex.sectorScore}</p>
+        <p>Influence: ${hex.sectorInfluence}</p>
+        <p>Political Profile:<br> ${hex.politicalProfile.join(", ")}</p>
 
+      <h4>Faction Strength in the Sector</h4>
+      <ul>
+        ${powers.map((p, index) => {
+          const strength = getFactionStrength(
+            { type: "sector", hex },
+            index
+          );
+          return `<li style="color:${p.color}; font-weight:bold;">
+                    ${p.name}: ${strength}
+                  </li>`;
+        }).join("")}
+      </ul>
       <hr />
       <button onclick="returnToWorldMap()">⬅ Back to Region Map</button>
     `;
@@ -933,15 +962,27 @@ function viewPlanet(sectorId, planetId) {
     <hr />
 
     <h4>Region Control</h4>
-      <p>Owner: ${regionScores[hex.region].owner ?? "None"}</p>
-      <p>Score: ${regionScores[hex.region].score}</p>
-    
+      <p>Owner: ${regionInfluence[hex.region].owner ?? "None"}</p>
+      <p>Influence: ${regionInfluence[hex.region].influence}</p>
+      <p>Political Profile:<br> ${regionInfluence[hex.region].politicalProfile.join(", ")}</p>
+      <p>Regional Faction Strength</p>
+      <ul>
+        ${powers.map((p, index) => {
+          const strength = getFactionStrength(
+            { type: "region", regionIndex: hex.region },
+            index
+          );
+          return `<li style="color:${p.color}; font-weight:bold;">
+                    ${p.name}: ${strength}
+                  </li>`;
+        }).join("")}
+      </ul>
     <hr />
 
     <h4>Sector Control</h4>
       <p>Owner: ${hex.sectorOwner ?? "None"}</p>
-      <p>Score: ${hex.sectorScore}</p>
-
+      <p>Influence: ${hex.sectorInfluence}</p>
+      <p>Political Profile:<br> ${hex.politicalProfile.join(", ")}</p>
     <hr />
 
     <h4>Assigned Dice</h4>
@@ -954,6 +995,20 @@ function viewPlanet(sectorId, planetId) {
             </li>
           `).join("")
       }
+    </ul>
+    <hr />
+
+    <h4>Faction Strength in the Sector</h4>
+    <ul>
+      ${powers.map((p, index) => {
+        const strength = getFactionStrength(
+          { type: "sector", hex },
+          index
+        );
+        return `<li style="color:${p.color}; font-weight:bold;">
+                  ${p.name}: ${strength}
+                </li>`;
+      }).join("")}
     </ul>
 
     ${assignButton}
@@ -1116,17 +1171,216 @@ function confirmDiceAssignment() {
       currentMap.availableDice = currentMap.availableDice.filter(d => d.id !== die.id);
 
       // ⭐ Add scoring
-      hex.sectorScore += die.sides;
+      let sectorGain = calculateSectorInfluenceGain(die, hex);
+      hex.sectorInfluence += sectorGain;
       hex.sectorOwner = "Player";
 
-      regionScores[hex.region].score += die.sides;
-      regionScores[hex.region].owner = "Player";
+      let regionGain = calculateRegionInfluenceGain(die, hex.region);
+      regionInfluence[hex.region].influence += regionGain;
+      regionInfluence[hex.region].owner = "Player";
     }
   });
 
   diceSelectionContext = null;
 
+  if (hex.sectorOwner === "Player") {
+    setSectorPoliticalProfile(hex);
+  }
+  if (regionInfluence[hex.region].owner === "Player") {
+    setRegionPoliticalProfile(hex.region);
+  }
+
   viewPlanet(ctx.sectorId, ctx.planetId);
+}
+
+function calculateInfluenceGainCore(die, profile) {
+  let max = die.sides;
+  let roll = Math.floor(Math.random() * max) + 1;
+
+  let debug = `Initial Roll: ${roll}\n`;
+
+  // Convert faction names to indices
+  const profileIndices = profile.map(name =>
+    powers.findIndex(p => p.name === name)
+  );
+
+  let modifiedRoll = roll;
+
+  profileIndices.forEach(profilePowerIndex => {
+    if (profilePowerIndex === -1) {
+      debug += `No faction in this profile seat.\n`;
+      return;
+    }
+
+    const result = determineWinner(die.power, profilePowerIndex);
+
+    const dieName = powers[die.power].name;
+    const profileName = powers[profilePowerIndex].name;
+
+    if (result === "player") {
+      modifiedRoll *= 2;
+      debug += `${dieName} beats ${profileName}: ${modifiedRoll}\n`;
+    } else if (result === "cpu") {
+      modifiedRoll /= 2;
+      debug += `${dieName} loses to ${profileName}: ${modifiedRoll}\n`;
+    } else {
+      debug += `${dieName} ties ${profileName}: ${modifiedRoll}\n`;
+    }
+  });
+
+  modifiedRoll = Math.max(1, Math.floor(modifiedRoll));
+
+  debug += `Final Influence Gain: ${modifiedRoll}`;
+  alert(debug);
+
+  return modifiedRoll;
+}
+function calculateSectorInfluenceGain(die, hex) {
+  return calculateInfluenceGainCore(die, hex.politicalProfile);
+}
+function calculateRegionInfluenceGain(die, regionIndex) {
+  return calculateInfluenceGainCore(die, regionInfluence[regionIndex].politicalProfile);
+}
+
+/*function calculateInfluenceGain(die, hex) {
+  let max = die.sides;
+
+  // Base roll
+  let roll = Math.floor(Math.random() * max) + 1;
+
+  // Debug log collector
+  let debug = `Initial Roll: ${roll}\n`;
+
+  const profile = hex.politicalProfile;
+
+  // Convert faction names to indices
+  const profileIndices = profile.map(name =>
+    powers.findIndex(p => p.name === name)
+  );
+
+  let modifiedRoll = roll;
+
+  profileIndices.forEach(profilePowerIndex => {
+    // Skip empty or invalid profile seats
+    if (profilePowerIndex === -1) {
+      debug += `No faction in this profile seat.\n`;
+      return;
+    }
+
+    const result = determineWinner(die.power, profilePowerIndex);
+
+    const dieName = powers[die.power].name;
+    console.log(profilePowerIndex);
+    const profileName = powers[profilePowerIndex].name;
+
+    if (result === "player") {
+      modifiedRoll *= 2;
+      debug += `${dieName} beats ${profileName}: ${modifiedRoll}\n`;
+    } else if (result === "cpu") {
+      modifiedRoll /= 2;
+      debug += `${dieName} loses to ${profileName}: ${modifiedRoll}\n`;
+    } else {
+      debug += `${dieName} ties ${profileName}: ${modifiedRoll}\n`;
+    }
+  });
+
+  modifiedRoll = Math.max(1, Math.floor(modifiedRoll));
+
+  debug += `Final Influence Gain: ${modifiedRoll}`;
+
+  alert(debug);
+
+  return modifiedRoll;
+}*/
+
+
+function setSectorPoliticalProfile(hex) {
+  const strengths = powers.map((p, index) =>
+    getFactionStrength({ type: "sector", hex }, index)
+  );
+
+  setPoliticalProfileForEntity(hex, strengths);
+}
+function setRegionPoliticalProfile(regionIndex) {
+  const strengths = powers.map((p, index) =>
+    getFactionStrength({ type: "region", regionIndex }, index)
+  );
+
+  setPoliticalProfileForEntity(regionInfluence[regionIndex], strengths);
+}
+
+
+function setPoliticalProfileForEntity(entity, strengths) {
+  // 1. Gather strength for each power
+  const total = strengths.reduce((a, b) => a + b, 0);
+
+  // If no dice, clear profile
+  if (total === 0) {
+    entity.politicalProfile = ["None", "None", "None"];
+    return;
+  }
+
+  // 2. Droop quota
+  const quota = Math.round(total / 4);
+
+  // 3. Guaranteed seats + remainders
+  const guaranteed = strengths.map(s => Math.floor(s / quota));
+  const remainders = strengths.map(s => s % quota);
+
+  // 4. Collect guaranteed seats
+  let seats = [];
+  guaranteed.forEach((count, index) => {
+    for (let i = 0; i < count; i++) {
+      seats.push(powers[index].name);
+    }
+  });
+
+  // 5. Fill remaining seats using remainder only (for now)
+  if (seats.length < 3) {
+    const remaining = powers
+      .map((p, index) => ({ name: p.name, remainder: remainders[index], index }))
+      .sort((a, b) => b.remainder - a.remainder);
+
+    const seatsNeeded = 3 - seats.length
+    for (let i = 0; i < seatsNeeded; i++) {
+      seats.push(remaining[i].name);
+    }
+  }
+
+  // 6. Store final profile
+  entity.politicalProfile = seats.slice(0, 3);
+}
+
+function getFactionStrength(scope, powerIndex) {
+  let total = 0;
+
+  if (scope.type === "sector") {
+    // scope.hex is the sector hex
+    scope.hex.planets.forEach(planet => {
+      planet.assignedDice.forEach(d => {
+        if (d.power === powerIndex) {
+          total += d.sides;
+        }
+      });
+    });
+  }
+
+  if (scope.type === "region") {
+    // scope.regionIndex tells us which region
+    currentMap.hexes.forEach(hex => {
+      if (hex.region === scope.regionIndex) {
+        hex.planets.forEach(planet => {
+          planet.assignedDice.forEach(d => {
+            if (d.power === powerIndex) {
+              total += d.sides;
+            }
+          });
+        });
+      }
+    });
+  }
+
+  return total;
 }
 
 // ------------------------------
@@ -1500,7 +1754,7 @@ function newGame() {
 function saveGame() {
   if (!currentMap) return alert("No map to save.");
   localStorage.setItem("savedMap", JSON.stringify(currentMap));
-  localStorage.setItem("regionScores", JSON.stringify(regionScores));
+  localStorage.setItem("regionInfluence", JSON.stringify(regionInfluence));
   localStorage.setItem("playerCredits", JSON.stringify(playerCredits));
   alert("Game saved.");
 }
@@ -1512,7 +1766,7 @@ function loadGame() {
   enableTopButtonsAfterGameStart();
 
   currentMap = JSON.parse(saved);
-  regionScores = JSON.parse(localStorage.getItem("regionScores"));
+  regionInfluence = JSON.parse(localStorage.getItem("regionInfluence"));
   playerCredits = JSON.parse(localStorage.getItem("playerCredits")) ?? 500;
   drawMap(currentMap);
   setupClick(currentMap);
@@ -1535,7 +1789,7 @@ function loadGame() {
 
 function resetGame() {
   localStorage.removeItem("savedMap");
-  localStorage.removeItem("regionScores");
+  localStorage.removeItem("regionInfluence");
   localStorage.removeItem("playerCredits");
   currentMap = null;
   playerCredits = 0;
