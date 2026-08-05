@@ -15,13 +15,34 @@
       text-align: center;
       margin-bottom: 20px;
     }
+    #mainContainer {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
     .left {
-      float: left;
-      width: 40%;
+      flex: 1 1 350px;
+      min-width: 300px;
+      max-width: 700px;
     }
     .right {
-      float: right;
-      width: 60%;
+      flex: 2 1 700px;
+      width: 700px;
+      text-align: left;
+    }
+    @media (max-width: 1300px) {
+      #mainContainer {
+        flex-direction: column;
+      }
+      .left {
+        order: 2;
+      }
+      .right {
+        min-width: auto;
+        order: 1;
+      }
     }
     canvas {
       background: #111;
@@ -54,7 +75,13 @@
       height: 5px;
       width: 80%;
     }
+    #shopScreen {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
     .shopButton{
+      width: 300px;
       background:#1A1A1A;
       border:1px solid #444;
       padding:15px;
@@ -161,53 +188,55 @@
   </div>
 </section>
 
-<section class="left"> <!--Info Panel on the left side of the page-->
-  <div id="hexInfo" style="margin-top:20px; text-align:left; width:700px; margin-left:auto; margin-right:auto;"></div>
-</section>
+<div id="mainContainer">
+  <section class="left"> <!--Info Panel on the left side of the page-->
+    <div id="hexInfo" style="margin-top:20px; text-align:left; margin-left:auto; margin-right:auto;"></div>
+  </section>
 
-<section class="right"> <!-- Canvas for the map on the right side of the page -->
-  <canvas id="mapCanvas" width="700" height="600"></canvas>
+  <section class="right"> <!-- Canvas for the map on the right side of the page -->
+    <canvas id="mapCanvas" width="700" height="600"></canvas>
 
-  <div id="shopScreen"
-       style="
-         display:none;
-         background:#111;
-         border:1px solid #333;
-         padding:20px;
-         margin-top:20px;
-         border-radius:10px;
-         color:#EEE;
-         width:700px;
-       ">
-  </div>
+    <div id="shopScreen"
+        style="
+          display:none;
+          background:#111;
+          border:1px solid #333;
+          padding:20px;
+          margin-top:20px;
+          border-radius:10px;
+          color:#EEE;
+          width:700px;
+        ">
+    </div>
 
-  <div id="duelGame"
-       style="
-         display:none;
-         background:#111;
-         border:1px solid #333;
-         padding:20px;
-         margin-top:20px;
-         border-radius:10px;
-         color:#EEE;
-         width:700px;
-       ">
-  </div>
+    <div id="duelGame"
+        style="
+          display:none;
+          background:#111;
+          border:1px solid #333;
+          padding:20px;
+          margin-top:20px;
+          border-radius:10px;
+          color:#EEE;
+          width:700px;
+        ">
+    </div>
 
-  <div id="hoverTooltip"
-      style="
-        position:absolute;
-        background:#222;
-        color:white;
-        padding:6px 10px;
-        border-radius:6px;
-        font-size:12px;
-        pointer-events:none;
-        display:none;
-        z-index:1000;
-      ">
-  </div>
-</section>
+    <div id="hoverTooltip"
+        style="
+          position:absolute;
+          background:#222;
+          color:white;
+          padding:6px 10px;
+          border-radius:6px;
+          font-size:12px;
+          pointer-events:none;
+          display:none;
+          z-index:1000;
+        ">
+    </div>
+  </section>
+</div>
 
 <script>
 const powers = [ //Defines the forces and their colors for the game
@@ -778,20 +807,22 @@ function setupClick(mapData) {
     const rect = canvas.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
+    const pagx = e.pageX;
+    const pagy = e.pageY;
 
-    handleHover(px, py, rect.left, e.clientY);
+    handleHover(px, py, pagx, pagy);
   });
 }
 
-function handleHover(px, py, lft, offY) {
+function handleHover(px, py, pagx, pagy) {
   const tooltip = document.getElementById("hoverTooltip");
 
   if (currentViewMode === "world") {
     const hex = getHexAtPixel(currentMap, px, py);
     if (hex) {
       tooltip.style.display = "block";
-      tooltip.style.left = (lft - 150) + "px";
-      tooltip.style.top = (offY - 100) + "px";
+      tooltip.style.left = (pagx - 150) + "px";
+      tooltip.style.top = (pagy - 100) + "px";
 
       tooltip.innerHTML = `
         <strong>Sector ${hex.sectorId}</strong><br>
@@ -815,8 +846,8 @@ function handleHover(px, py, lft, offY) {
     if (planet) {
       const assigned = planet.assignedDice;
       tooltip.style.display = "block";
-      tooltip.style.left = (lft - 150) + "px";
-      tooltip.style.top = (offY - 100) + "px";
+      tooltip.style.left = (pagx - 150) + "px";
+      tooltip.style.top = (pagy - 100) + "px";
 
       tooltip.innerHTML = `
         <strong>${planet.name}</strong><br>
@@ -1133,7 +1164,7 @@ function showDiceCollection() {
   // Build HTML table
   let html = `
     <h3>Dice Collection</h3>
-    <table style="border-collapse: collapse; width: 80%; text-align: center;">
+    <table style="border-collapse: collapse; text-align: center;">
       <tr>
         <th style="padding: 6px; border: 1px solid #555;"></th>
         ${sizes.map(s => `<th style="padding: 6px; border: 1px solid #555;">d${s}</th>`).join("")}
@@ -1181,7 +1212,7 @@ function showAvailableDice(selectionMode = false) {
 
   let html = `
     <h3>${selectionMode ? "Select Dice to Assign" : "Available Dice"}</h3>
-    <table style="border-collapse: collapse; width: 80%; text-align: center;">
+    <table style="border-collapse: collapse; text-align: center;">
       <tr>
         <th style="padding: 6px; border: 1px solid #555;"></th>
         ${sizes.map(s => `<th style="padding: 6px; border: 1px solid #555;">d${s}</th>`).join("")}
@@ -1261,7 +1292,7 @@ function openShop() {
 
   canvas.style.display = "none";
   duel.style.display = "none";
-  shop.style.display = "block";
+  shop.style.display = "flex";
 
   let html = `<h2>Booster Pack Shop</h2> <button onclick="returnToMap()">Return to World Map</button>`;
 
