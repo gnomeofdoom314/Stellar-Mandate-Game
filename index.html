@@ -170,6 +170,7 @@
     <button id="diceCollectionBtn" onclick="showDiceCollection()">Dice Collection</button>
     <button id="availableDiceBtn" onclick="showAvailableDice()">Available Dice</button>
     <button id="duelBtn" onclick="playDuelGame()">Minigame - Earn &#10056 Credits!</button>
+    <button id="playersBtn" onclick="consolePlayers()">Players</button>
   </div>
 
   <div id="currencyBar"
@@ -287,13 +288,23 @@ function enableTopButtonsAfterGameStart() {
 }
 
 // ------------------------------
-// Player Credits
+// Player Setup
 // ------------------------------
-let playerCredits = 0
+let currentPlayerId = "player-1"; // default player
+function createPlayer(id, name) {
+  return {
+    id,
+    name,
+    credits: 500,
+    ownedDiceIds: new Set(),
+    availableDiceIds: new Set()
+  };
+}
+
 function updateCurrencyDisplay() {
   const bar = document.getElementById("currencyBar");
   bar.innerHTML = `
-    Credits: &#10056 ${playerCredits}
+    Credits: &#10056 ${currentMap.playersById[currentPlayerId].credits}
     <button id="shopBtn" onclick="openShop()">Shop Booster Packs</button>
   `;
 }
@@ -409,7 +420,7 @@ function generateMap() {
         q,
         r,
         noise,
-        sectorInfluence: 0,
+        sectorInfluence: {},
         sectorOwner: null,
         hasAssignedDice: false,
         ownerType: null,
@@ -440,6 +451,13 @@ function generateMap() {
   // 4. Voronoi Regions
   // ------------------------------
   const REGION_COUNT = 5;
+  mapRegion = Array.from({ length: REGION_COUNT }, () => ({
+    sectorIds: [],
+    owner: null,
+    regionInfluence: {},
+    politicalProfile: ["None", "None", "None"],
+    lastPowerActivity: [],
+  }));
 
   const seeds = [];
   for (let i = 0; i < REGION_COUNT; i++) {
@@ -461,12 +479,6 @@ function generateMap() {
     hex.region = bestSeed;
   });
 
-  regionInfluence = Array.from({ length: REGION_COUNT }, () => ({
-    owner: null,
-    influence: 0,
-    politicalProfile: ["None", "None", "None"],
-    lastPowerActivity: [],
-  }));
 
   // ------------------------------
   // 5. Add planets to each hex (sector)
@@ -474,6 +486,8 @@ function generateMap() {
   
   hexes.forEach((hex, index) => {
     hex.sectorId = index;
+    mapRegion[hex.region].sectorIds.push(hex.sectorId);
+
 
     const planetTypes = ["Planet1", "Planet2", "Planet3", "Planet4", "Planet5", "Planet6"];
     const moonTypes   = ["Moon1", "Moon2", "Moon3"];
@@ -493,6 +507,7 @@ function generateMap() {
         hasPosition: false,
         assignedDice: [],
         hasAssignedDice: false,
+        owner: null,
         ownerType: null
       };
 
@@ -510,6 +525,7 @@ function generateMap() {
           hasPosition: false,
           assignedDice: [],
           hasAssignedDice: false,
+          owner: null,
           ownerType: null
         });
       }
@@ -529,6 +545,7 @@ function generateMap() {
             hasPosition: false,
             assignedDice: [],
             hasAssignedDice: false,
+            owner: null,
             ownerType: null
           });
         }
@@ -824,6 +841,9 @@ function handleHover(px, py, pagx, pagy) {
   if (currentViewMode === "world") {
     const hex = getHexAtPixel(currentMap, px, py);
     if (hex) {
+      const sectorOwner = currentMap.playersById[hex.sectorOwner];
+      const region = mapRegion[hex.region];
+      const regionOwner = currentMap.playersById[region.owner];
       tooltip.style.display = "block";
       tooltip.style.left = (pagx - 150) + "px";
       tooltip.style.top = (pagy - 100) + "px";
@@ -833,13 +853,13 @@ function handleHover(px, py, pagx, pagy) {
         Region: ${hex.region}<br>
         <hr />
         <strong>Region Control</strong><br>
-        Owner: ${regionInfluence[hex.region].owner ?? "None"}<br>
-        Influence: ${regionInfluence[hex.region].influence}<br>
+        Owner: ${regionOwner ? regionOwner.name : "None"}<br>
+        Influence: ${region.regionInfluence[region.owner] ?? 0}<br>
         <hr />
         <strong>Sector Control</strong><br>
         Num Planets: ${hex.planets.length}<br>
-        Owner: ${hex.sectorOwner ?? "None"}<br>
-        Influence: ${hex.sectorInfluence}
+        Owner: ${sectorOwner ? sectorOwner.name : "None"}<br>
+        Influence: ${hex.sectorInfluence[hex.sectorOwner] ?? 0}
       `;
       return;
     }
@@ -849,6 +869,8 @@ function handleHover(px, py, pagx, pagy) {
     const planet = getPlanetAtPixel(currentSectorView, px, py, sectorHexSize);
     if (planet) {
       const assigned = planet.assignedDice;
+      const sectorOwner = currentMap.playersById[currentSectorView.sectorOwner];
+      const planetOwner = currentMap.playersById[planet.owner];
       tooltip.style.display = "block";
       tooltip.style.left = (pagx - 150) + "px";
       tooltip.style.top = (pagy - 100) + "px";
@@ -858,11 +880,11 @@ function handleHover(px, py, pagx, pagy) {
         Image: ${planet.imageId}<br>
         <hr />
         <strong>Sector Control</strong><br>
-        Owner: ${currentSectorView.sectorOwner ?? "None"}<br>
-        Influence: ${currentSectorView.sectorInfluence}<br>
+        Owner: ${sectorOwner ? sectorOwner.name : "None"}<br>
+        Influence: ${currentSectorView.sectorInfluence[currentSectorView.sectorOwner] ?? 0}<br>
         <hr />
         <strong>Planet Control</strong><br>
-        Owner: ${planet.ownerType ?? "None"}<br>
+        Owner: ${planetOwner ? planetOwner.name : "None"}<br>
         Dice: <br>
           <ul>
             ${assigned.length === 0
@@ -884,6 +906,9 @@ function handleHover(px, py, pagx, pagy) {
 }
 
 function renderSectorInfo(hex) {
+  const sectorOwner = currentMap.playersById[hex.sectorOwner];
+  const region = mapRegion[hex.region];
+  const regionOwner = currentMap.playersById[region.owner];
   document.getElementById("hexInfo").innerHTML = `
       <h3>Sector ${hex.sectorId}</h3>
       <p>Region: ${hex.region}</p>
@@ -891,14 +916,14 @@ function renderSectorInfo(hex) {
       <hr />
 
       <h4>Region Control</h4>
-        <p>Owner: ${regionInfluence[hex.region].owner ?? "None"}</p>
-        <p>Influence: ${regionInfluence[hex.region].influence}</p>
-        <p>Political Profile:<br> ${regionInfluence[hex.region].politicalProfile.join(", ")}</p>
+        <p>Owner: ${regionOwner ? regionOwner.name : "None"}</p>
+        <p>Influence: ${region.regionInfluence[region.owner] ?? 0}</p>
+        <p>Political Profile:<br> ${region.politicalProfile.join(", ")}</p>
         <p>Regional Faction Strength</p>
         <ul>
           ${powers.map((p, index) => {
             const strength = getFactionStrength(
-              { type: "region", regionIndex: hex.region },
+              { type: "region", region: region },
               index
             );
             return `<li style="color:${p.color}; font-weight:bold;">
@@ -909,8 +934,8 @@ function renderSectorInfo(hex) {
       <hr />
 
       <h4>Sector Control</h4>
-        <p>Owner: ${hex.sectorOwner ?? "None"}</p>
-        <p>Influence: ${hex.sectorInfluence}</p>
+        <p>Owner: ${sectorOwner ? sectorOwner.name : "None"}</p>
+        <p>Influence: ${hex.sectorInfluence[hex.sectorOwner] ?? 0}</p>
         <p>Political Profile:<br> ${hex.politicalProfile.join(", ")}</p>
 
       <h4>Faction Strength in the Sector</h4>
@@ -938,7 +963,7 @@ function returnToWorldMap() {
   document.getElementById("hexInfo").innerHTML = ""; //clear info panel
 }
 
-function viewPlanet(sectorId, planetId) {
+function viewPlanet(sectorId, planetId, sectorGain = null, regionGain = null, cpuSummary = null) {
   const hex = currentMap.hexes.find(h => h.sectorId == sectorId);
   const planet = hex.planets.find(p => p.id == planetId);
 
@@ -954,7 +979,27 @@ function viewPlanet(sectorId, planetId) {
          Dice Assigned
        </button>`;
 
+  const sectorOwner = currentMap.playersById[hex.sectorOwner];
+  const region = mapRegion[hex.region];
+  const regionOwner = currentMap.playersById[region.owner];
   info.innerHTML = `
+    ${sectorGain !== null || regionGain !== null ? `
+      <div style="background:#012; padding:10px; margin:10px 0; border:1px solid #555;">
+        <h4>Recent Influence Gains</h4>
+        <p><strong>Sector Gain:</strong> ${sectorGain ?? 0}</p>
+        <p><strong>Region Gain:</strong> ${regionGain ?? 0}</p>
+      </div>
+    ` : ""}
+    ${cpuSummary ? `
+      <div style="background:#200; padding:10px; margin:10px 0; border:1px solid #553;">
+        <h4>CPU Activity</h4>
+        <p>The CPU deployed forces to region <strong>${cpuSummary.regionName}</strong>,
+          sector <strong>${cpuSummary.sectorId}</strong></p>
+        <p>Faction used: <span style="color:${powers.find(p => p.name === cpuSummary.factionUsed).color}; font-weight:bold;">
+          ${cpuSummary.factionUsed}
+        </span></p>
+      </div>
+    ` : ""}
     <h3>${planet.name}</h3>
     <p><strong>Sector:</strong> ${sectorId}</p>
     <p><strong>Region:</strong> ${hex.region}</p>
@@ -962,26 +1007,26 @@ function viewPlanet(sectorId, planetId) {
     <hr />
 
     <h4>Region Control</h4>
-      <p>Owner: ${regionInfluence[hex.region].owner ?? "None"}</p>
-      <p>Influence: ${regionInfluence[hex.region].influence}</p>
-      <p>Political Profile:<br> ${regionInfluence[hex.region].politicalProfile.join(", ")}</p>
+      <p>Owner: ${regionOwner ? regionOwner.name : "None"}</p>
+      <p>Influence: ${region.regionInfluence[region.owner] ?? 0}</p>
+      <p>Political Profile:<br> ${region.politicalProfile.join(", ")}</p>
       <p>Regional Faction Strength</p>
       <ul>
-        ${powers.map((p, index) => {
-          const strength = getFactionStrength(
-            { type: "region", regionIndex: hex.region },
-            index
-          );
-          return `<li style="color:${p.color}; font-weight:bold;">
-                    ${p.name}: ${strength}
-                  </li>`;
-        }).join("")}
-      </ul>
+          ${powers.map((p, index) => {
+            const strength = getFactionStrength(
+              { type: "region", region: region },
+              index
+            );
+            return `<li style="color:${p.color}; font-weight:bold;">
+                      ${p.name}: ${strength}
+                    </li>`;
+          }).join("")}
+        </ul>
     <hr />
 
     <h4>Sector Control</h4>
-      <p>Owner: ${hex.sectorOwner ?? "None"}</p>
-      <p>Influence: ${hex.sectorInfluence}</p>
+      <p>Owner: ${sectorOwner ? sectorOwner.name : "None"}</p>
+      <p>Influence: ${hex.sectorInfluence[hex.sectorOwner] ?? 0}</p>
       <p>Political Profile:<br> ${hex.politicalProfile.join(", ")}</p>
     <hr />
 
@@ -1092,7 +1137,7 @@ function pickWeightedDie(weights) {
   return weights[0].sides;
 }
 
-function generateRandomDice(count = 10, packType = "standard", forcedFaction = null) {
+function generateRandomDice(count = 10, packType = "standard", forcedFaction = null, ownerId) {
   const dice = [];
   const pack = dicePackTypes[packType];
 
@@ -1109,14 +1154,19 @@ function generateRandomDice(count = 10, packType = "standard", forcedFaction = n
 
     const power = powers[powerIndex];
 
-    dice.push({
-      id: `D-${Date.now()}-${i}`,
+    const die = {
+      id: `D-${Date.now()}-${currentMap.nextDieId++}`,
       sides,
       power: powerIndex,
-      ownerId: "player",
+      ownerId: ownerId,
       name: `${power.name} d${sides}`,
       color: power.color
-    });
+    };
+
+    dice.push(die);
+
+    currentMap.playersById[ownerId].ownedDiceIds.add(die.id)
+    currentMap.playersById[ownerId].availableDiceIds.add(die.id)    
   }
 
   return dice;
@@ -1139,19 +1189,27 @@ function confirmDiceAssignment() {
   const ctx = diceSelectionContext;
   if (!ctx) return;
 
+  const player = currentMap.playersById[currentPlayerId];
+
   const hex = currentMap.hexes.find(h => h.sectorId == ctx.sectorId);
+  const region = mapRegion[hex.region];
   const planet = hex.planets.find(p => p.id == ctx.planetId);
+
+  const oldSectorOwner = hex.sectorOwner;
+  let sectorGain = 0;
+  const oldRegionOwner = region.owner;
+  let regionGain = 0;
+
+  const sizes = [4, 6, 8, 10, 12, 20];
 
   ctx.selectedCategories.forEach(cat => {
     const { powerIndex, sizeIndex } = cat;
-
-    const sizes = [4, 6, 8, 10, 12, 20];
     const targetSize = sizes[sizeIndex];
 
-    // Find all matching dice
-    const candidates = currentMap.availableDice.filter(d =>
-      d.power === powerIndex && d.sides === targetSize
-    );
+    // ⭐ Find matching dice from player's availableDiceIds
+    const candidates = [...player.availableDiceIds]
+      .map(id => currentMap.diceList[id])
+      .filter(d => d.power === powerIndex && d.sides === targetSize);
 
     if (candidates.length > 0) {
       // Pick one (random for now)
@@ -1159,45 +1217,54 @@ function confirmDiceAssignment() {
 
       // Assign it
       planet.assignedDice.push(die);
+
       if (planet.assignedDice.length > 0) {
         hex.hasAssignedDice = true;
         hex.ownerType = "player";
+
         planet.hasAssignedDice = true;
+        planet.owner = currentPlayerId;
         planet.ownerType = "player";
+
         drawSectorMap(hex);
       }
 
-      // Remove from available pool
-      currentMap.availableDice = currentMap.availableDice.filter(d => d.id !== die.id);
+      // ⭐ Remove from player's available pool
+      player.availableDiceIds.delete(die.id);
 
-      // ⭐ Add scoring
-      let sectorGain = calculateSectorInfluenceGain(die, hex);
-      hex.sectorInfluence += sectorGain;
-      hex.sectorOwner = "Player";
+      // ⭐ Influence scoring
+      const roll = rollDie(die);
 
-      let regionGain = calculateRegionInfluenceGain(die, hex.region);
-      regionInfluence[hex.region].influence += regionGain;
-      regionInfluence[hex.region].owner = "Player";
+      sectorGain = calculateInfluenceGain(die, hex.politicalProfile, roll);
+      hex.sectorInfluence[currentPlayerId] =
+        (hex.sectorInfluence[currentPlayerId] ?? 0) + sectorGain;
+
+      hex.sectorOwner = getSectorOwner(hex);
+
+      regionGain = calculateInfluenceGain(die, region.politicalProfile, roll);
+      region.regionInfluence[currentPlayerId] =
+        (region.regionInfluence[currentPlayerId] ?? 0) + regionGain;
+
+      region.owner = getRegionOwner(region);
     }
   });
 
   diceSelectionContext = null;
 
-  if (hex.sectorOwner === "Player") {
-    setSectorPoliticalProfile(hex);
-  }
-  if (regionInfluence[hex.region].owner === "Player") {
-    setRegionPoliticalProfile(hex.region);
+  // ⭐ Recalculate political profiles only when needed
+  if (hex.sectorOwner !== oldSectorOwner || oldSectorOwner === currentPlayerId) {
+    setPoliticalProfile(hex, { type: "sector", hex });
   }
 
-  viewPlanet(ctx.sectorId, ctx.planetId);
+  if (region.owner !== oldRegionOwner || oldRegionOwner === currentPlayerId) {
+    setPoliticalProfile(region, { type: "region", region });
+  }
+
+  const cpuSummary = cpuTakeTurn("cpu-1");
+  viewPlanet(ctx.sectorId, ctx.planetId, sectorGain, regionGain, cpuSummary);
 }
 
-function calculateInfluenceGainCore(die, profile) {
-  let max = die.sides;
-  let roll = Math.floor(Math.random() * max) + 1;
-
-  let debug = `Initial Roll: ${roll}\n`;
+function calculateInfluenceGain(die, profile, roll) {
 
   // Convert faction names to indices
   const profileIndices = profile.map(name =>
@@ -1208,7 +1275,6 @@ function calculateInfluenceGainCore(die, profile) {
 
   profileIndices.forEach(profilePowerIndex => {
     if (profilePowerIndex === -1) {
-      debug += `No faction in this profile seat.\n`;
       return;
     }
 
@@ -1219,98 +1285,53 @@ function calculateInfluenceGainCore(die, profile) {
 
     if (result === "player") {
       modifiedRoll *= 2;
-      debug += `${dieName} beats ${profileName}: ${modifiedRoll}\n`;
     } else if (result === "cpu") {
       modifiedRoll /= 2;
-      debug += `${dieName} loses to ${profileName}: ${modifiedRoll}\n`;
     } else {
-      debug += `${dieName} ties ${profileName}: ${modifiedRoll}\n`;
     }
   });
 
   modifiedRoll = Math.max(1, Math.floor(modifiedRoll));
 
-  debug += `Final Influence Gain: ${modifiedRoll}`;
-  alert(debug);
-
   return modifiedRoll;
 }
-function calculateSectorInfluenceGain(die, hex) {
-  return calculateInfluenceGainCore(die, hex.politicalProfile);
-}
-function calculateRegionInfluenceGain(die, regionIndex) {
-  return calculateInfluenceGainCore(die, regionInfluence[regionIndex].politicalProfile);
-}
 
-/*function calculateInfluenceGain(die, hex) {
-  let max = die.sides;
+function getSectorOwner(hex) {
+  const entries = Object.entries(hex.sectorInfluence);
+  if (entries.length === 0) return null;
 
-  // Base roll
-  let roll = Math.floor(Math.random() * max) + 1;
+  let [topPlayerId, topValue] = entries[0];
 
-  // Debug log collector
-  let debug = `Initial Roll: ${roll}\n`;
-
-  const profile = hex.politicalProfile;
-
-  // Convert faction names to indices
-  const profileIndices = profile.map(name =>
-    powers.findIndex(p => p.name === name)
-  );
-
-  let modifiedRoll = roll;
-
-  profileIndices.forEach(profilePowerIndex => {
-    // Skip empty or invalid profile seats
-    if (profilePowerIndex === -1) {
-      debug += `No faction in this profile seat.\n`;
-      return;
+  for (const [playerId, value] of entries) {
+    if (value > topValue) {
+      topPlayerId = playerId;
+      topValue = value;
     }
+  }
 
-    const result = determineWinner(die.power, profilePowerIndex);
+  return topPlayerId;
+}
+function getRegionOwner(region) {
+  const entries = Object.entries(region.regionInfluence);
+  if (entries.length === 0) return null;
 
-    const dieName = powers[die.power].name;
-    console.log(profilePowerIndex);
-    const profileName = powers[profilePowerIndex].name;
+  let [topPlayerId, topValue] = entries[0];
 
-    if (result === "player") {
-      modifiedRoll *= 2;
-      debug += `${dieName} beats ${profileName}: ${modifiedRoll}\n`;
-    } else if (result === "cpu") {
-      modifiedRoll /= 2;
-      debug += `${dieName} loses to ${profileName}: ${modifiedRoll}\n`;
-    } else {
-      debug += `${dieName} ties ${profileName}: ${modifiedRoll}\n`;
+  for (const [playerId, value] of entries) {
+    if (value > topValue) {
+      topPlayerId = playerId;
+      topValue = value;
     }
-  });
+  }
 
-  modifiedRoll = Math.max(1, Math.floor(modifiedRoll));
-
-  debug += `Final Influence Gain: ${modifiedRoll}`;
-
-  alert(debug);
-
-  return modifiedRoll;
-}*/
-
-
-function setSectorPoliticalProfile(hex) {
-  const strengths = powers.map((p, index) =>
-    getFactionStrength({ type: "sector", hex }, index)
-  );
-
-  setPoliticalProfileForEntity(hex, strengths);
-}
-function setRegionPoliticalProfile(regionIndex) {
-  const strengths = powers.map((p, index) =>
-    getFactionStrength({ type: "region", regionIndex }, index)
-  );
-
-  setPoliticalProfileForEntity(regionInfluence[regionIndex], strengths);
+  return topPlayerId;
 }
 
-
-function setPoliticalProfileForEntity(entity, strengths) {
+function setPoliticalProfile(entity, scope) {
+  // 0. Convert Scope to strengths?
+  const strengths = powers.map((p, index) =>
+    getFactionStrength(scope, index)
+  );
   // 1. Gather strength for each power
   const total = strengths.reduce((a, b) => a + b, 0);
 
@@ -1353,12 +1374,13 @@ function setPoliticalProfileForEntity(entity, strengths) {
 
 function getFactionStrength(scope, powerIndex) {
   let total = 0;
-
   if (scope.type === "sector") {
+    const ownerId = scope.hex.sectorOwner;
+
     // scope.hex is the sector hex
     scope.hex.planets.forEach(planet => {
       planet.assignedDice.forEach(d => {
-        if (d.power === powerIndex) {
+        if (d.ownerId === ownerId && d.power === powerIndex) {
           total += d.sides;
         }
       });
@@ -1366,17 +1388,17 @@ function getFactionStrength(scope, powerIndex) {
   }
 
   if (scope.type === "region") {
-    // scope.regionIndex tells us which region
-    currentMap.hexes.forEach(hex => {
-      if (hex.region === scope.regionIndex) {
-        hex.planets.forEach(planet => {
-          planet.assignedDice.forEach(d => {
-            if (d.power === powerIndex) {
-              total += d.sides;
-            }
-          });
+    const ownerId = scope.region.owner;
+
+    scope.region.sectorIds.forEach(sectorId => {
+      const hex = currentMap.hexes[sectorId];
+      hex.planets.forEach(planet => {
+        planet.assignedDice.forEach(d => {
+          if (d.ownerId === ownerId && d.power === powerIndex) {
+            total += d.sides;
+          }
         });
-      }
+      });
     });
   }
 
@@ -1393,12 +1415,14 @@ let diceSelectionContext = {
 };
 
 function showDiceCollection() {
-  if (!currentMap || !currentMap.playerDice) {
-    document.getElementById("hexInfo").innerHTML = "<p>No dice available.</p>";
+  const info = document.getElementById("hexInfo");
+
+  const player = currentMap.playersById[currentPlayerId];
+  if (!player || player.ownedDiceIds.size === 0) {
+    info.innerHTML = "<p>No dice available.</p>";
     return;
   }
 
-  // Die sizes (columns)
   const sizes = [4, 6, 8, 10, 12, 20];
 
   // Initialize matrix: 7 powers × 6 sizes
@@ -1406,8 +1430,11 @@ function showDiceCollection() {
     Array.from({ length: sizes.length }, () => 0)
   );
 
-  // Count dice
-  currentMap.playerDice.forEach(die => {
+  // Count dice (only the player's dice)
+  player.ownedDiceIds.forEach(id => {
+    const die = currentMap.diceList[id];
+    if (!die) return;
+
     const powerIndex = die.power;
     const sizeIndex = sizes.indexOf(die.sides);
     if (sizeIndex !== -1) {
@@ -1440,13 +1467,14 @@ function showDiceCollection() {
 
   html += "</table>";
 
-  document.getElementById("hexInfo").innerHTML = html;
+  info.innerHTML = html;
 }
 
 function showAvailableDice(selectionMode = false) {
   const info = document.getElementById("hexInfo");
 
-  if (!currentMap || !currentMap.availableDice) {
+  const player = currentMap.playersById[currentPlayerId];
+  if (!player || player.availableDiceIds.size === 0) {
     info.innerHTML = "<p>No available dice.</p>";
     return;
   }
@@ -1458,7 +1486,11 @@ function showAvailableDice(selectionMode = false) {
     Array.from({ length: sizes.length }, () => [])
   );
 
-  currentMap.availableDice.forEach(die => {
+  // Convert IDs → dice objects
+  player.availableDiceIds.forEach(id => {
+    const die = currentMap.diceList[id];
+    if (!die) return;
+
     const powerIndex = die.power;
     const sizeIndex = sizes.indexOf(die.sides);
     matrix[powerIndex][sizeIndex].push(die);
@@ -1581,13 +1613,13 @@ function openShop() {
 
 function buyBoosterPack(packType = "standard") {
   const pack = dicePackTypes[packType];
-
-  if (playerCredits < pack.cost) {
+  
+  if (currentMap.playersById[currentPlayerId].credits < pack.cost) {
     alert("Not enough credits!");
     return;
   }
 
-  playerCredits -= pack.cost;
+  currentMap.playersById[currentPlayerId].credits -= pack.cost;
   updateCurrencyDisplay();
 
   let forcedFaction = null;
@@ -1623,13 +1655,12 @@ function openBoosterPack(packType, forcedFaction = null) {
   }
 
   // Booster pack contains 3 dice
-  const newDice = generateRandomDice(3, packType, forcedFaction);
+  const newDice = generateRandomDice(3, packType, forcedFaction, "player-1");
 
   // Add to total collection
-  currentMap.playerDice.push(...newDice);
-
-  // Add to available pool
-  currentMap.availableDice.push(...newDice);
+  newDice.forEach(die => {
+    currentMap.diceList[die.id] = die;
+  });
 
   // Display results
   showBoosterResults(newDice);
@@ -1650,6 +1681,11 @@ function showBoosterResults(newDice) {
 
     <button onclick="showAvailableDice()">View Available Dice</button>
   `;
+}
+
+function rollDie(die) {
+  const result = Math.floor(Math.random() * die.sides) + 1
+  return result;
 }
 
 // ------------------------------
@@ -1727,10 +1763,37 @@ let currentMap = null;
 function newGame() {
   enableTopButtonsAfterGameStart();
   currentMap = generateMap();
-  currentMap.playerDice = generateRandomDice(10, "standard");
-  currentMap.availableDice = [...currentMap.playerDice];
+  console.log("creating map");
+  
+  currentMap.players = [];
+  currentMap.playersById = {};
+  const player = createPlayer("player-1", "Gnome");
+    currentMap.players.push(player);
+    currentMap.playersById[player.id] = player;
+  const cpu = createPlayer("cpu-1", "CPU");
+    currentMap.players.push(cpu);
+    currentMap.playersById[cpu.id] = cpu;
+  console.log("creating players",currentMap.playersById);
+  
+  currentMap.diceList = {};
+  currentMap.nextDieId = 0;
+  console.log("Player dice...");
+  const pcStartDice = generateRandomDice(10, "standard", null, "player-1");
+  pcStartDice.forEach(die => {
+    currentMap.diceList[die.id] = die;
+  });
+  console.log("Cpu dice...");
+  const cpuStartDice = generateRandomDice(10, "standard", null, "cpu-1");
+  cpuStartDice.forEach(die => {
+    currentMap.diceList[die.id] = die;
+  });
+  seedCpuEnclave("cpu-1", 10);
+  console.log("creating dice");
   drawMap(currentMap);
   setupClick(currentMap);
+
+  
+  updateCurrencyDisplay();
 
   document.getElementById("hexInfo").innerHTML = `
     <h3>Welcome to Stellar Mandate!</h3>
@@ -1739,23 +1802,19 @@ function newGame() {
     <p>Play games to earn Credits, which can be used to purchase new dice packs that you can then assign to planets to gain even more influence!</p>
     <h3>Starting Dice</h3>
     <ul>
-        ${currentMap.playerDice.map(d => 
+        ${Object.values(currentMap.diceList).map(d => 
         `<li style="color:${d.color}; font-weight:bold;">
             ${d.name}
         </li>`
         ).join("")}
     </ul>
   `;
-
-  playerCredits = 500; // starting money
-  updateCurrencyDisplay();
 }
 
 function saveGame() {
   if (!currentMap) return alert("No map to save.");
   localStorage.setItem("savedMap", JSON.stringify(currentMap));
   localStorage.setItem("regionInfluence", JSON.stringify(regionInfluence));
-  localStorage.setItem("playerCredits", JSON.stringify(playerCredits));
   alert("Game saved.");
 }
 
@@ -1767,15 +1826,14 @@ function loadGame() {
 
   currentMap = JSON.parse(saved);
   regionInfluence = JSON.parse(localStorage.getItem("regionInfluence"));
-  playerCredits = JSON.parse(localStorage.getItem("playerCredits")) ?? 500;
   drawMap(currentMap);
   setupClick(currentMap);
 
-  if (currentMap.playerDice) {
+  if (currentMap.diceList) {
     document.getElementById("hexInfo").innerHTML = `
       <h3>Loaded Dice</h3>
       <ul>
-        ${currentMap.playerDice.map(d => 
+        ${currentMap.diceList.map(d => 
             `<li style="color:${d.color}; font-weight:bold;">
                 ${d.name}
             </li>`
@@ -1790,9 +1848,7 @@ function loadGame() {
 function resetGame() {
   localStorage.removeItem("savedMap");
   localStorage.removeItem("regionInfluence");
-  localStorage.removeItem("playerCredits");
   currentMap = null;
-  playerCredits = 0;
   updateCurrencyDisplay();
 
   const canvas = document.getElementById("mapCanvas");
@@ -1801,6 +1857,253 @@ function resetGame() {
 
   document.getElementById("hexInfo").innerHTML = "";
   alert("Game reset.");
+}
+
+// ------------------------------
+// 15. CPU Enclave
+// ------------------------------
+
+function seedCpuEnclave(cpuId, count = 3) {
+  const cpu = currentMap.playersById[cpuId];
+
+  // Build list of (hex, planet) pairs
+  const allPlanetPairs = currentMap.hexes.flatMap(hex =>
+    hex.planets.map(planet => ({ hex, planet }))
+  );
+
+  // Pick random planets
+  const chosen = [];
+  for (let i = 0; i < count; i++) {
+    const pair = allPlanetPairs[Math.floor(Math.random() * allPlanetPairs.length)];
+    chosen.push(pair);
+  }
+  console.log(chosen)
+  chosen.forEach(({ hex, planet }) => {
+    const region = mapRegion[hex.region];
+
+    // Pick a random CPU die
+    const dieIds = [...cpu.availableDiceIds];
+    console.log(dieIds)
+    if (dieIds.length === 0) return;
+
+    const dieId = dieIds[Math.floor(Math.random() * dieIds.length)];
+    const die = currentMap.diceList[dieId];
+
+    // Assign die
+    planet.assignedDice.push(die);
+    cpu.availableDiceIds.delete(dieId);
+
+    planet.owner = cpuId;
+    planet.ownerType = "cpu";
+    planet.hasAssignedDice = true;
+
+    hex.ownerType = "cpu";
+    hex.hasAssignedDice = true;
+
+    // Influence scoring
+    const roll = rollDie(die);
+
+    let sectorGain = calculateInfluenceGain(die, hex.politicalProfile, roll);
+    hex.sectorInfluence[cpuId] =
+      (hex.sectorInfluence[cpuId] ?? 0) + sectorGain;
+
+    hex.sectorOwner = getSectorOwner(hex);
+
+    let regionGain = calculateInfluenceGain(die, region.politicalProfile, roll);
+    region.regionInfluence[cpuId] =
+      (region.regionInfluence[cpuId] ?? 0) + regionGain;
+
+    region.owner = getRegionOwner(region);
+
+    // Update political profiles
+    setPoliticalProfile(hex, { type: "sector", hex });
+    setPoliticalProfile(region, { type: "region", region });
+  });
+}
+
+function cpuPickPlanet(cpuId) {
+  const cpu = currentMap.playersById[cpuId];
+
+  // Build list of (hex, planet) pairs, but ONLY planets with no assigned dice
+  const allPlanetPairs = currentMap.hexes.flatMap(hex =>
+    hex.planets
+      .filter(planet => planet.assignedDice.length === 0)
+      .map(planet => ({ hex, planet }))
+  );
+
+  if (allPlanetPairs.length === 0) {
+    // Fallback: pick any planet
+    const fallback = currentMap.hexes.flatMap(hex =>
+      hex.planets.map(planet => ({ hex, planet }))
+    );
+    return fallback[Math.floor(Math.random() * fallback.length)];
+  }
+
+  // --- CPU Strategic Mode (70% chance) ---
+  if (Math.random() < 0.70) {
+    const weighted = allPlanetPairs.map(pair => {
+      const sectorInf = pair.hex.sectorInfluence[cpuId] ?? 0;
+      const regionInf = mapRegion[pair.hex.region].regionInfluence[cpuId] ?? 0;
+      const weight = sectorInf * 2 + regionInf;
+      return { ...pair, weight };
+    });
+
+    weighted.sort((a, b) => b.weight - a.weight);
+
+    // If the best has any weight, pick it
+    if (weighted[0].weight > 0) {
+      return weighted[0];
+    }
+
+    // Otherwise fallback to random
+    return weighted[Math.floor(Math.random() * weighted.length)];
+  }
+
+  // --- CPU Expansion Mode (30% chance) ---
+  // Pick from sectors where CPU has LOW or ZERO influence
+  const lowInf = allPlanetPairs.filter(pair => {
+    const sectorInf = pair.hex.sectorInfluence[cpuId] ?? 0;
+    return sectorInf < 3; // tweakable threshold
+  });
+
+  if (lowInf.length > 0) {
+    return lowInf[Math.floor(Math.random() * lowInf.length)];
+  }
+
+  // Fallback: random
+  return allPlanetPairs[Math.floor(Math.random() * allPlanetPairs.length)];
+}
+
+function cpuChooseFaction(hex, region) {
+  // Prefer sector profile; fallback to region profile
+  const profile = hex.politicalProfile.length > 0
+    ? hex.politicalProfile
+    : region.politicalProfile;
+
+  // Strongest faction is first in the sorted profile
+  const strongestFaction = profile[0];
+  const strongestIndex = powers.findIndex(p => p.name === strongestFaction);
+
+  // --- CPU Strategic Variance (21% chance) ---
+  if (Math.random() < 0.21) {
+    // Three possible alternative choices:
+    const altIndices = [
+      strongestIndex,                     // same faction
+      (strongestIndex - 1 + powers.length) % powers.length, // one step behind
+      (strongestIndex - 4 + powers.length) % powers.length  // four steps behind
+    ];
+
+    const chosenIndex = altIndices[Math.floor(Math.random() * altIndices.length)];
+    return powers[chosenIndex].name;
+  }
+
+  // --- Normal CPU Strategy: pick the counter-faction (strongest - 2) ---
+  const counterIndex = (strongestIndex - 2 + powers.length) % powers.length;
+  return powers[counterIndex].name;
+}
+
+function cpuBuyFactionDice(cpuId, factionName) {
+  const cpu = currentMap.playersById[cpuId];
+
+  const newDice = generateRandomDice(
+    3,              // pack size
+    "standard",     // pack type
+    factionName,    // forced faction
+    cpuId           // owner
+  );
+
+  // Add to global diceList
+  newDice.forEach(die => {
+    currentMap.diceList[die.id] = die;
+  });
+
+  return newDice;
+}
+
+function cpuPickBestDice(cpuId, factionName) {
+  const cpu = currentMap.playersById[cpuId];
+
+  const dice = [...cpu.availableDiceIds]
+    .map(id => currentMap.diceList[id]);
+
+  // Score dice by:
+  // - matching faction
+  // - highest sides
+  const scored = dice.map(d => {
+    let score = d.sides;
+    if (powers[d.power].name === factionName) score += 20;
+    return { die: d, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, 2).map(s => s.die);
+}
+
+function cpuAssignDice(cpuId, hex, planet, dice) {
+  const region = mapRegion[hex.region];
+  console.log(hex)
+
+  dice.forEach(die => {
+    planet.assignedDice.push(die);
+    currentMap.playersById[cpuId].availableDiceIds.delete(die.id);
+
+    planet.owner = cpuId;
+    planet.ownerType = "cpu";
+    planet.hasAssignedDice = true;
+
+    hex.ownerType = "cpu";
+    hex.hasAssignedDice = true;
+
+    const roll = rollDie(die);
+
+    let sectorGain = calculateInfluenceGain(die, hex.politicalProfile, roll);
+    console.log("cpu gained ",sectorGain," points in the sector!")
+    hex.sectorInfluence[cpuId] =
+      (hex.sectorInfluence[cpuId] ?? 0) + sectorGain;
+
+    hex.sectorOwner = getSectorOwner(hex);
+
+    let regionGain = calculateInfluenceGain(die, region.politicalProfile, roll);
+    console.log("cpu gained ",regionGain," points in the region!")
+    region.regionInfluence[cpuId] =
+      (region.regionInfluence[cpuId] ?? 0) + regionGain;
+
+    region.owner = getRegionOwner(region);
+
+    setPoliticalProfile(hex, { type: "sector", hex });
+    setPoliticalProfile(region, { type: "region", region });
+  });
+
+  //drawSectorMap(hex);
+}
+
+function cpuTakeTurn(cpuId) {
+  const { hex, planet } = cpuPickPlanet(cpuId);
+  const region = mapRegion[hex.region];
+
+  const factionName = cpuChooseFaction(hex, region);
+
+  cpuBuyFactionDice(cpuId, factionName);
+
+  const bestDice = cpuPickBestDice(cpuId, factionName);
+
+  cpuAssignDice(cpuId, hex, planet, bestDice);
+
+  return {
+    sectorId: hex.sectorId,
+    regionName: hex.region,
+    planetName: planet.name,
+    factionUsed: factionName
+  };
+}
+
+
+
+
+
+function consolePlayers(){
+  console.log(currentMap.playersById)
 }
 
 </script>
