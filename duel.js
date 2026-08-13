@@ -2,6 +2,8 @@ const N = powers.length;
 const arenaSize = 640;
 const center = arenaSize / 2;
 const radius = 192;
+let lastPlayerChoice = null;
+let cpuWillCounter = false;
 
 // --- 2. Paradox Tournament Rule ---
 function beats(v) {
@@ -77,7 +79,19 @@ function drawArrows() {
 
 // --- 5. Play Round ---
 function playRound(playerChoice) {
-  const cpuChoice = Math.floor(Math.random() * N);
+  let cpuChoice;
+  if (cpuWillCounter === true){
+    const c1 = (lastPlayerChoice + 3) % N;
+    const c2 = (lastPlayerChoice + 5) % N;
+    const c3 = (lastPlayerChoice + 6) % N;
+
+    const counters = [c1, c2, c3];
+    cpuChoice = counters[Math.floor(Math.random() * counters.length)];
+  } else {
+  // Normal random behavior
+    cpuChoice = Math.floor(Math.random() * N);
+  }
+  
   const winner = determineWinner(playerChoice, cpuChoice);
 
   const playerRoll = Math.floor(Math.random() * 6) + 1;
@@ -129,6 +143,11 @@ function playRound(playerChoice) {
   const playerName = powers[playerChoice].name;
   const cpuName = powers[cpuChoice].name;
 
+  lastPlayerChoice = playerChoice;
+  if (lastPlayerChoice !== null && Math.random() < 0.3) {
+    cpuWillCounter = true;
+  } else {cpuWillCounter = false}
+
   let msg = `
     You deployed <strong>${playerName}</strong> (roll: ${playerRoll}).<br>
     Opponent deployed <strong>${cpuName}</strong> (roll: ${cpuRoll}).<br><br>
@@ -147,6 +166,10 @@ function playRound(playerChoice) {
     Influence — You: <strong>${playerInfluence}</strong>  
     &nbsp;&nbsp; Opponent: <strong>${cpuInfluence}</strong>
   `;
+
+  if (cpuWillCounter === true) {
+    influenceDiv.innerHTML += `<p><span style="color:#8B1E1E; font-weight:bold;">You sense your opponent organizing a counter-offensive!</span></p>`
+  }
 
   checkWinCondition();
 }
@@ -181,7 +204,7 @@ function checkWinCondition() {
 
     let msg = "";
     const reward = awardDuelCredits();
-    
+
   if (playerInfluence > cpuInfluence) {
     // Player wins
     msg = `
@@ -224,7 +247,8 @@ function awardDuelCredits() {
   const bonus = Math.ceil(Math.sqrt(Math.max(0, margin)));
   const reward = 2 + bonus;
 
-  playerCredits += reward;
+  const player = currentMap.playersById[currentPlayerId];
+  player.credits += reward;
   updateCurrencyDisplay();
 
   return reward;
@@ -234,7 +258,15 @@ function awardDuelCredits() {
 function restartGame() {
   playerInfluence = 0;
   cpuInfluence = 0;
-  resultDiv.innerHTML = "";
+  lastPlayerChoice = null;
+  resultDiv.innerHTML = `
+    <p>To play influence duel, click on one of the factions to deploy them, and your cpu opponent will select their own faction. Once both players have selected a faction, you each roll a d6.</p>
+    <hr />
+    <strong>Pay attention to the arrows, they show which faction beats which other factions!</strong>
+    <p>In a favorable matchup (for example, if you choose <span style="color:#8B1E1E; font-weight:bold;">Dominion</span>, and the cpu chooses <span style="color:#C48F2F; font-weight:bold;">Syndicate</span>), you get +2 to your roll.</p>
+    <p>In an unfavorable matchup (for example, if you choose <span style="color:#2F6DB3; font-weight:bold;">Concord</span>, and the cpu chooses <span style="color:#2FA08C; font-weight:bold;">Axiom</span>), you get -1 to your roll.</p>
+    <p>Whoever's score is higher wins the round. First to aquire <strong>50 influence</strong> wins!<p>  
+  `;
   influenceDiv.innerHTML = "";
   buttonsDiv.innerHTML = "";
   linesGroup.innerHTML = "";

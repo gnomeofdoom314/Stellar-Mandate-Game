@@ -167,10 +167,8 @@
     <button id="saveGameBtn" onclick="saveGame()">Save Game</button>
     <button id="loadGameBtn" onclick="loadGame()">Load Game</button>
     <button id="resetGameBtn" onclick="resetGame()">Reset Game</button><br>
-    <button id="diceCollectionBtn" onclick="showDiceCollection()">Dice Collection</button>
     <button id="availableDiceBtn" onclick="showAvailableDice()">Available Dice</button>
     <button id="duelBtn" onclick="playDuelGame()">Minigame - Earn &#10056 Credits!</button>
-    <button id="playersBtn" onclick="consolePlayers()">Players</button>
   </div>
 
   <div id="currencyBar"
@@ -253,11 +251,10 @@ const powers = [ //Defines the forces and their colors for the game
 // ------------------------------
 // Button Initialization
 // ------------------------------
-function disableTopButtonsInitially() {
+function disableTopButtons() {
   const disableList = [
     "saveGameBtn",
     "resetGameBtn",
-    "diceCollectionBtn",
     "availableDiceBtn",
     "duelBtn",
     "shopBtn"
@@ -269,13 +266,12 @@ function disableTopButtonsInitially() {
   });
 }
 // Run on first load
-disableTopButtonsInitially();
+disableTopButtons();
 
-function enableTopButtonsAfterGameStart() {
+function enableTopButtons() {
   const enableList = [
     "saveGameBtn",
     "resetGameBtn",
-    "diceCollectionBtn",
     "availableDiceBtn",
     "duelBtn",
     "shopBtn"
@@ -959,6 +955,16 @@ function returnToWorldMap() {
   currentViewMode = "world";
   currentSectorView = null;
 
+  const canvas = document.getElementById("mapCanvas");
+  const shop = document.getElementById("shopScreen");
+  const duel = document.getElementById("duelGame");
+
+  duel.style.display = "none";
+  shop.style.display = "none";
+  canvas.style.display = "block";
+
+  enableTopButtons();
+
   drawMap(currentMap); // redraw world map
   document.getElementById("hexInfo").innerHTML = ""; //clear info panel
 }
@@ -1003,6 +1009,7 @@ function viewPlanet(sectorId, planetId, sectorGain = null, regionGain = null, cp
     <h3>${planet.name}</h3>
     <p><strong>Sector:</strong> ${sectorId}</p>
     <p><strong>Region:</strong> ${hex.region}</p>
+    ${assignButton}
 
     <hr />
 
@@ -1055,8 +1062,6 @@ function viewPlanet(sectorId, planetId, sectorGain = null, regionGain = null, cp
                 </li>`;
       }).join("")}
     </ul>
-
-    ${assignButton}
   `;
 }
 
@@ -1414,68 +1419,18 @@ let diceSelectionContext = {
   selectedCategories: []  // each entry: { powerIndex, sizeIndex }
 };
 
-function showDiceCollection() {
+function showAvailableDice(selectionMode = false, showAll = false) {
   const info = document.getElementById("hexInfo");
 
   const player = currentMap.playersById[currentPlayerId];
-  if (!player || player.ownedDiceIds.size === 0) {
-    info.innerHTML = "<p>No dice available.</p>";
-    return;
-  }
 
-  const sizes = [4, 6, 8, 10, 12, 20];
+  // Choose which dice pool to display
+  const diceIds = showAll
+    ? Array.from(player.ownedDiceIds)          // full collection
+    : Array.from(player.availableDiceIds);     // available only
 
-  // Initialize matrix: 7 powers × 6 sizes
-  const matrix = Array.from({ length: powers.length }, () =>
-    Array.from({ length: sizes.length }, () => 0)
-  );
-
-  // Count dice (only the player's dice)
-  player.ownedDiceIds.forEach(id => {
-    const die = currentMap.diceList[id];
-    if (!die) return;
-
-    const powerIndex = die.power;
-    const sizeIndex = sizes.indexOf(die.sides);
-    if (sizeIndex !== -1) {
-      matrix[powerIndex][sizeIndex]++;
-    }
-  });
-
-  // Build HTML table
-  let html = `
-    <h3>Dice Collection</h3>
-    <table style="border-collapse: collapse; text-align: center;">
-      <tr>
-        <th style="padding: 6px; border: 1px solid #555;"></th>
-        ${sizes.map(s => `<th style="padding: 6px; border: 1px solid #555;">d${s}</th>`).join("")}
-      </tr>
-  `;
-
-  matrix.forEach((row, powerIndex) => {
-    html += `
-      <tr>
-        <td style="padding: 6px; border: 1px solid #555; color:${powers[powerIndex].color}; font-weight:bold;">
-          ${powers[powerIndex].name}
-        </td>
-        ${row.map(count => `
-          <td style="padding: 6px; border: 1px solid #555;">${count}</td>
-        `).join("")}
-      </tr>
-    `;
-  });
-
-  html += "</table>";
-
-  info.innerHTML = html;
-}
-
-function showAvailableDice(selectionMode = false) {
-  const info = document.getElementById("hexInfo");
-
-  const player = currentMap.playersById[currentPlayerId];
-  if (!player || player.availableDiceIds.size === 0) {
-    info.innerHTML = "<p>No available dice.</p>";
+  if (!player || diceIds.length === 0) {
+    info.innerHTML = `<p>No ${showAll ? "owned" : "available"} dice.</p>`;
     return;
   }
 
@@ -1487,7 +1442,7 @@ function showAvailableDice(selectionMode = false) {
   );
 
   // Convert IDs → dice objects
-  player.availableDiceIds.forEach(id => {
+  diceIds.forEach(id => {
     const die = currentMap.diceList[id];
     if (!die) return;
 
@@ -1497,8 +1452,15 @@ function showAvailableDice(selectionMode = false) {
   });
 
   let html = `
-    <h3>${selectionMode ? "Select Dice to Assign" : "Available Dice"}</h3>
-    <table style="border-collapse: collapse; text-align: center;">
+    <h3>
+      ${showAll ? "Dice Collection" : (selectionMode ? "Select Dice to Assign" : "Available Dice")}
+    </h3>
+
+    <button onclick="showAvailableDice(${selectionMode}, ${!showAll})">
+      ${showAll ? "Show Available Dice" : "Show Full Collection"}
+    </button>
+
+    <table style="border-collapse: collapse; text-align: center; margin-top:10px;">
       <tr>
         <th style="padding: 6px; border: 1px solid #555;"></th>
         ${sizes.map(s => `<th style="padding: 6px; border: 1px solid #555;">d${s}</th>`).join("")}
@@ -1514,11 +1476,14 @@ function showAvailableDice(selectionMode = false) {
         ${row.map((diceList, sizeIndex) => `
           <td style="padding: 6px; border: 1px solid #555;">
             ${diceList.length > 0 ? diceList.length : ""}
-            ${selectionMode && diceList.length > 0 ? `
-              <br>
-              <input type="checkbox"
-                     onchange="toggleDiceCategorySelection(${powerIndex}, ${sizeIndex})">
-            ` : ""}
+            ${
+              selectionMode &&
+              diceList.length > 0 &&
+              !showAll
+                ? `<br><input type="checkbox"
+                     onchange="toggleDiceCategorySelection(${powerIndex}, ${sizeIndex})">`
+                : ""
+            }
           </td>
         `).join("")}
       </tr>
@@ -1527,7 +1492,7 @@ function showAvailableDice(selectionMode = false) {
 
   html += "</table>";
 
-  if (selectionMode) {
+  if (selectionMode && !showAll) {
     html += `
       <button onclick="confirmDiceAssignment()">Confirm Assignment</button>
       <button onclick="cancelAssignment()">Cancel</button>
@@ -1580,7 +1545,7 @@ function openShop() {
   duel.style.display = "none";
   shop.style.display = "flex";
 
-  let html = `<h2>Booster Pack Shop</h2> <button onclick="returnToMap()">Return to World Map</button>`;
+  let html = `<h2>Booster Pack Shop</h2> <button onclick="returnToWorldMap()">Return to World Map</button>`;
 
   for (const key in dicePackTypes) {
     const pack = dicePackTypes[key];
@@ -1630,19 +1595,6 @@ function buyBoosterPack(packType = "standard") {
   }
 
   openBoosterPack(packType, forcedFaction); // your existing booster logic
-}
-
-function returnToMap() {
-  const canvas = document.getElementById("mapCanvas");
-  const shop = document.getElementById("shopScreen");
-  const duel = document.getElementById("duelGame");
-
-  duel.style.display = "none";
-  shop.style.display = "none";
-  canvas.style.display = "block";
-
-  drawMap(currentMap);
-  document.getElementById("hexInfo").innerHTML = ""; //clear info panel
 }
 
 // ------------------------------
@@ -1705,11 +1657,20 @@ function playDuelGame() {
   shop.style.display = "none";
   duel.style.display = "block";
 
+  disableTopButtons();
+
   const info = document.getElementById("hexInfo");
   info.innerHTML = `
         <h2>Influence Duel</h2>
-        <button onclick="returnToMap()">Return to World Map</button><br>
-        <div id="result"></div>
+        <button onclick="returnToWorldMap()">Return to World Map</button><br>
+        <div id="result">
+          <p>To play influence duel, click on one of the factions to deploy them, and your cpu opponent will select their own faction. Once both players have selected a faction, you each roll a d6.</p>
+          <hr />
+          <strong>Pay attention to the arrows, they show which faction beats which other factions!</strong>
+          <p>In a favorable matchup (for example, if you choose <span style="color:#8B1E1E; font-weight:bold;">Dominion</span>, and the cpu chooses <span style="color:#C48F2F; font-weight:bold;">Syndicate</span>), you get +2 to your roll.</p>
+          <p>In an unfavorable matchup (for example, if you choose <span style="color:#2F6DB3; font-weight:bold;">Concord</span>, and the cpu chooses <span style="color:#2FA08C; font-weight:bold;">Axiom</span>), you get -1 to your roll.</p>
+          <p>Whoever's score is higher wins the round. First to aquire <strong>50 influence</strong> wins!<p>  
+        </div>
         <div id="influence"></div>
         <button id="restart" onclick="restartGame()">Restart Duel</button>
       `;
@@ -1748,7 +1709,14 @@ function startDuel() {
 
   buttonsDiv.innerHTML = "";
   linesGroup.innerHTML = "";
-  resultDiv.innerHTML = "";
+  resultDiv.innerHTML = `
+    <p>To play influence duel, click on one of the factions to deploy them, and your cpu opponent will select their own faction. Once both players have selected a faction, you each roll a d6.</p>
+    <hr />
+    <strong>Pay attention to the arrows, they show which faction beats which other factions!</strong>
+    <p>In a favorable matchup (for example, if you choose <span style="color:#8B1E1E; font-weight:bold;">Dominion</span>, and the cpu chooses <span style="color:#C48F2F; font-weight:bold;">Syndicate</span>), you get +2 to your roll.</p>
+    <p>In an unfavorable matchup (for example, if you choose <span style="color:#2F6DB3; font-weight:bold;">Concord</span>, and the cpu chooses <span style="color:#2FA08C; font-weight:bold;">Axiom</span>), you get -1 to your roll.</p>
+    <p>Whoever's score is higher wins the round. First to aquire <strong>50 influence</strong> wins!<p>  
+  `;
   influenceDiv.innerHTML = ""
 
   placeButtons();
@@ -1761,7 +1729,7 @@ function startDuel() {
 let currentMap = null;
 
 function newGame() {
-  enableTopButtonsAfterGameStart();
+  enableTopButtons();
   currentMap = generateMap();
   console.log("creating map");
   
@@ -1813,8 +1781,19 @@ function newGame() {
 
 function saveGame() {
   if (!currentMap) return alert("No map to save.");
-  localStorage.setItem("savedMap", JSON.stringify(currentMap));
-  localStorage.setItem("regionInfluence", JSON.stringify(regionInfluence));
+
+  // Deep clone the map so we don't mutate the live game state
+  const mapToSave = JSON.parse(JSON.stringify(currentMap));
+
+  // Convert Sets → Arrays for every player
+  Object.values(mapToSave.playersById).forEach(player => {
+    player.availableDiceIds = Array.from(currentMap.playersById[player.id].availableDiceIds);
+    player.ownedDiceIds = Array.from(currentMap.playersById[player.id].ownedDiceIds);
+  });
+
+  mapToSave.mapRegion = mapRegion;
+
+  localStorage.setItem("savedMap", JSON.stringify(mapToSave));
   alert("Game saved.");
 }
 
@@ -1822,41 +1801,24 @@ function loadGame() {
   const saved = localStorage.getItem("savedMap");
   if (!saved) return alert("No saved game found.");
 
-  enableTopButtonsAfterGameStart();
+  enableTopButtons();
 
   currentMap = JSON.parse(saved);
-  regionInfluence = JSON.parse(localStorage.getItem("regionInfluence"));
-  drawMap(currentMap);
+  Object.values(currentMap.playersById).forEach(player => {
+    player.availableDiceIds = new Set(player.availableDiceIds || []);
+    player.ownedDiceIds = new Set(player.ownedDiceIds || []);
+  });
+
+  mapRegion = currentMap.mapRegion;
+
+  returnToWorldMap();
   setupClick(currentMap);
 
-  if (currentMap.diceList) {
-    document.getElementById("hexInfo").innerHTML = `
-      <h3>Loaded Dice</h3>
-      <ul>
-        ${currentMap.diceList.map(d => 
-            `<li style="color:${d.color}; font-weight:bold;">
-                ${d.name}
-            </li>`
-        ).join("")}
-      </ul>
-    `;
-  }
+  document.getElementById("hexInfo").innerHTML = `
+    <h3>Game Loaded</h3>
+  `;
 
   updateCurrencyDisplay();
-}
-
-function resetGame() {
-  localStorage.removeItem("savedMap");
-  localStorage.removeItem("regionInfluence");
-  currentMap = null;
-  updateCurrencyDisplay();
-
-  const canvas = document.getElementById("mapCanvas");
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  document.getElementById("hexInfo").innerHTML = "";
-  alert("Game reset.");
 }
 
 // ------------------------------
@@ -1877,13 +1839,11 @@ function seedCpuEnclave(cpuId, count = 3) {
     const pair = allPlanetPairs[Math.floor(Math.random() * allPlanetPairs.length)];
     chosen.push(pair);
   }
-  console.log(chosen)
   chosen.forEach(({ hex, planet }) => {
     const region = mapRegion[hex.region];
 
     // Pick a random CPU die
     const dieIds = [...cpu.availableDiceIds];
-    console.log(dieIds)
     if (dieIds.length === 0) return;
 
     const dieId = dieIds[Math.floor(Math.random() * dieIds.length)];
@@ -2042,7 +2002,6 @@ function cpuPickBestDice(cpuId, factionName) {
 
 function cpuAssignDice(cpuId, hex, planet, dice) {
   const region = mapRegion[hex.region];
-  console.log(hex)
 
   dice.forEach(die => {
     planet.assignedDice.push(die);
@@ -2058,14 +2017,12 @@ function cpuAssignDice(cpuId, hex, planet, dice) {
     const roll = rollDie(die);
 
     let sectorGain = calculateInfluenceGain(die, hex.politicalProfile, roll);
-    console.log("cpu gained ",sectorGain," points in the sector!")
     hex.sectorInfluence[cpuId] =
       (hex.sectorInfluence[cpuId] ?? 0) + sectorGain;
 
     hex.sectorOwner = getSectorOwner(hex);
 
     let regionGain = calculateInfluenceGain(die, region.politicalProfile, roll);
-    console.log("cpu gained ",regionGain," points in the region!")
     region.regionInfluence[cpuId] =
       (region.regionInfluence[cpuId] ?? 0) + regionGain;
 
@@ -2102,9 +2059,6 @@ function cpuTakeTurn(cpuId) {
 
 
 
-function consolePlayers(){
-  console.log(currentMap.playersById)
-}
 
 </script>
 <script src="duel.js"></script>
