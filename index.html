@@ -168,7 +168,7 @@
     <button id="loadGameBtn" onclick="loadGame()">Load Game</button>
     <button id="resetGameBtn" onclick="resetGame()">Reset Game</button><br>
     <button id="availableDiceBtn" onclick="showAvailableDice()">Available Dice</button>
-    <button id="duelBtn" onclick="playDuelGame()">Minigame - Earn &#10056 Credits!</button>
+    <button id="homeSystemBtn" onclick="showHomeSystem()">Home System</button>
   </div>
 
   <div id="currencyBar"
@@ -189,7 +189,10 @@
 
 <div id="mainContainer">
   <section class="left"> <!--Info Panel on the left side of the page-->
-    <div id="hexInfo" style="margin-top:20px; text-align:left; margin-left:auto; margin-right:auto;"></div>
+    <div id="hexInfo" style="margin-top:20px; text-align:left; margin-left:auto; margin-right:auto;">
+    <h3>Welcome to Stellar Mandate!</h3>
+    <p>Press New Game to get started, or load a saved game.</p>
+    </div>
   </section>
 
   <section class="right"> <!-- Canvas for the map on the right side of the page -->
@@ -247,6 +250,16 @@ const powers = [ //Defines the forces and their colors for the game
   { name: "Axiom Technologists",  color: "#2FA08C" },
   { name: "Rift Nomads",          color: "#A06E2F" }
 ];
+const specialPowers = [
+  {name: "UN of Origin", color: "#ccc", description: "Dice belonging to the United Nations of Origin"},
+];
+
+const specialPlanetBehaviors = {
+  Duel: {
+    displayText: "Influence Duel",
+    buttonAction: playDuelGame,
+  },
+};
 
 // ------------------------------
 // Button Initialization
@@ -256,7 +269,7 @@ function disableTopButtons() {
     "saveGameBtn",
     "resetGameBtn",
     "availableDiceBtn",
-    "duelBtn",
+    "homeSystemBtn",
     "shopBtn"
   ];
 
@@ -273,7 +286,7 @@ function enableTopButtons() {
     "saveGameBtn",
     "resetGameBtn",
     "availableDiceBtn",
-    "duelBtn",
+    "homeSystemBtn",
     "shopBtn"
   ];
 
@@ -454,6 +467,13 @@ function generateMap() {
     politicalProfile: ["None", "None", "None"],
     lastPowerActivity: [],
   }));
+  mapRegion[-1] = {
+    sectorIds: [],
+    owner: currentPlayerId,
+    regionInfluence: { [currentPlayerId]: 0 },
+    politicalProfile: ["None", "None", "None"],
+    lastPowerActivity: [],
+  };
 
   const seeds = [];
   for (let i = 0; i < REGION_COUNT; i++) {
@@ -553,13 +573,69 @@ function generateMap() {
 }
 
 // ------------------------------
+// 5a. Special Planets
+// ------------------------------
+
+function getMoonsForSpecialPlanet(planetId) {
+  return [
+    ...currentMap.hexes.flatMap(h => h.planets),
+    ...homeSystem.planets
+  ].filter(p => p.parentId === planetId);
+}
+
+function getPlayerOwnedMoonsForSpecialPlanet(playerId, planetId) {
+  const moons = getMoonsForSpecialPlanet(planetId);
+  console.log("ownedMoons:",moons)
+  return moons.filter(m => m.owner === playerId);
+}
+
+function isSpecialPlanetUnlockedForPlayer(planet, playerId) {
+  if (!planet.specialPlanetType) return false;
+
+  const ownedMoons = getPlayerOwnedMoonsForSpecialPlanet(playerId, planet.id);
+  return ownedMoons.length === 1;
+}
+
+function isMoonLockedForPlayer(moon, playerId) {
+  if (!moon.parentId) return false; // not part of a special planet
+
+  const parent = homeSystem.planets.find(p => p.id === moon.parentId);
+  if (!parent) return false;
+
+  const ownedMoons = getPlayerOwnedMoonsForSpecialPlanet(playerId, parent.id);
+
+  // If player owns exactly one moon, all other moons of that planet are locked
+  if (ownedMoons.length === 1) {
+    const ownedMoon = ownedMoons[0];
+    return moon.id !== ownedMoon.id;
+  }
+
+  // If player owns 0 or >1 (edge case), treat as unlocked for assignment
+  return false;
+}
+
+function canAssignDiceToPlanet(planet, playerId) {
+  // Special planets themselves never accept dice
+  if (planet.specialPlanetType) return false;
+
+  // Moons may be locked per player
+  if (planet.parentId) {
+    return !isMoonLockedForPlayer(planet, playerId);
+  }
+
+  // Normal planets
+  return true;
+}
+
+// ------------------------------
 // 6. Draw map
 // ------------------------------
 const planetImages = {};
 function loadPlanetImages() {
   const ids = [
     "Planet1", "Planet2", "Planet3", "Planet4", "Planet5", "Planet6",
-    "Moon1", "Moon2", "Moon3"
+    "Moon1", "Moon2", "Moon3",
+    "Station7"
   ];
 
   ids.forEach(id => {
@@ -586,8 +662,8 @@ function drawMap(mapData) {
 
   mapData.hexes.forEach(hex => {
     const {x,y} = hexToPixel(hex.q, hex.r, hexSize);
-    const cx = x + canvas.width/2;
-    const cy = y + canvas.height/2;
+    const cx = x + canvas.width/2 + viewOffsetX;
+    const cy = y + canvas.height/2 + viewOffsetY;
 
     const color = regionColors[hex.region];
     drawHex(ctx, cx, cy, hexSize, color);
@@ -672,14 +748,17 @@ function drawSectorMap(hex) {
   hex.planets.forEach(planet => {
     const { x, y } = hexToPixel(planet.q, planet.r, sectorHexSize);
 
-    planet.pixelX = x + canvas.width / 2;
-    planet.pixelY = y + canvas.height / 2;
+    const px = x + canvas.width / 2 + viewOffsetX;
+    const py = y + canvas.height / 2 + viewOffsetY;
+
+    planet.pixelX = px;
+    planet.pixelY = py;
 
     // draw hex
     const isSelected = (planet.id === selectedPlanetId);
     const fillColor = isSelected ? "#777" : "#333";
 
-    drawHex(ctx, planet.pixelX, planet.pixelY, sectorHexSize, fillColor);
+    drawHex(ctx, px, py, sectorHexSize, fillColor);
 
     const img = planetImages[planet.imageId];
     if (img.complete) {
@@ -703,11 +782,11 @@ function drawSectorMap(hex) {
     }
 
     if (isSelected) {
-      drawSelectedBorder(ctx, planet.pixelX, planet.pixelY, sectorHexSize);
+      drawSelectedBorder(ctx, px, py, sectorHexSize);
     }
 
     if (planet.hasAssignedDice) {
-      drawOverlayIcon(ctx, planet.pixelX, planet.pixelY, sectorHexSize, planet.ownerType);
+      drawOverlayIcon(ctx, px, py, sectorHexSize, planet.ownerType);
     }
   });
 
@@ -745,8 +824,6 @@ function findFreeSpot(planets, q, r) {
   return { q: q + 1, r };
 }
 
-
-
 function drawBackArrow(ctx) {
   ctx.fillStyle = "#fff";
   ctx.font = "24px sans-serif";
@@ -783,19 +860,32 @@ function getPlanetAtPixel(hex, px, py, size) {
   return null;
 }
 
+// Global Drag state
+let isDragging = false;
+let didDrag = false;
+let dragStartX = 0;
+let dragStartY = 0;
+
+let viewOffsetX = 0;
+let viewOffsetY = 0;
+
 function setupClick(mapData) {
   const canvas = document.getElementById("mapCanvas");
   const info = document.getElementById("hexInfo");
 
   canvas.onclick = (e) => {
+    if (didDrag) return;
+
     const rect = canvas.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
 
     if (currentViewMode === "world") {
-      const hex = getHexAtPixel(mapData, px, py);
+      const hex = getHexAtPixel(currentMap, px, py);
 
       if (hex) {
+        viewOffsetX = 0;
+        viewOffsetY = 0;
         currentViewMode = "sector";
         currentSectorView = hex;
 
@@ -820,7 +910,9 @@ function setupClick(mapData) {
     }
   }
 
+  //Hover listener
   canvas.addEventListener("mousemove", (e) => {
+    if (isDragging) return;
     const rect = canvas.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
@@ -828,6 +920,42 @@ function setupClick(mapData) {
     const pagy = e.pageY;
 
     handleHover(px, py, pagx, pagy);
+  });
+
+  //Drag event listeners
+  canvas.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    didDrag = false;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+  });
+
+  canvas.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    didDrag = true;
+
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+
+    viewOffsetX += dx;
+    viewOffsetY += dy;
+    const maxX = 600;   // clamps how far offset can move
+    const maxY = 500;
+    viewOffsetX = Math.max(-maxX, Math.min(viewOffsetX, maxX));
+    viewOffsetY = Math.max(-maxY, Math.min(viewOffsetY, maxY));
+
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+
+    if (currentViewMode === "world") { // redraw with offset
+      drawMap(currentMap);
+    } else if (currentViewMode === "sector") {
+      drawSectorMap(currentSectorView);
+    } 
+  });
+
+  window.addEventListener("mouseup", () => {
+    isDragging = false;
   });
 }
 
@@ -873,7 +1001,6 @@ function handleHover(px, py, pagx, pagy) {
 
       tooltip.innerHTML = `
         <strong>${planet.name}</strong><br>
-        Image: ${planet.imageId}<br>
         <hr />
         <strong>Sector Control</strong><br>
         Owner: ${sectorOwner ? sectorOwner.name : "None"}<br>
@@ -952,8 +1079,11 @@ function renderSectorInfo(hex) {
 }
 
 function returnToWorldMap() {
+  viewOffsetX = 0;
+  viewOffsetY = 0;
   currentViewMode = "world";
   currentSectorView = null;
+  selectedPlanetId = null;
 
   const canvas = document.getElementById("mapCanvas");
   const shop = document.getElementById("shopScreen");
@@ -970,10 +1100,51 @@ function returnToWorldMap() {
 }
 
 function viewPlanet(sectorId, planetId, sectorGain = null, regionGain = null, cpuSummary = null) {
-  const hex = currentMap.hexes.find(h => h.sectorId == sectorId);
+  // If we're already in a sector (including Home System), use it directly
+  let hex = currentSectorView;
+
+  // Fallback: if called from world view, find the sector in the world map
+  if (!hex || hex.sectorId !== sectorId) {
+    hex = currentMap.hexes.find(h => h.sectorId == sectorId);
+  }
+
+  if (!hex) {
+    console.error("viewPlanet: sector not found:", sectorId);
+    return;
+  }
   const planet = hex.planets.find(p => p.id == planetId);
 
   const info = document.getElementById("hexInfo");
+
+  if (planet.specialPlanetType === "Duel") {
+    const unlocked = isSpecialPlanetUnlockedForPlayer(planet, currentPlayerId);
+    console.log(planet);
+    console.log(currentPlayerId);
+    console.log(unlocked)
+
+    if (!unlocked) {
+      const moons = getMoonsForSpecialPlanet(planet.id);
+      info.innerHTML = `
+        <h3>${planet.name}</h3>
+        <p>This location is <span style="color:#8B1E1E; font-weight:bold;">locked</span>.</p>
+        <p>Claim one of its moons to unlock the Influence Duel.</p>
+        <ul>
+          ${moons.map(m => `<li>${m.name}</li>`).join("")}
+        </ul>
+      `;
+      return;
+    }
+    const behavior = specialPlanetBehaviors[planet.specialPlanetType];
+    info.innerHTML = `
+      <h3>${planet.name}</h3>
+      <p>Your Blockade of the planet is <span style="color:#2F6DB3; font-weight:bold;">successful!</span><br>
+        You may launch an attack on the <span style="color:#8B1E1E; font-weight:bold;">Rebels</span>!</p>
+      <button onclick="${behavior.buttonAction.name}('${sectorId}', '${planetId}')">
+        <span style="color:#FFD95A">Begin ${behavior.displayText}</span>,<br> Earn &#10056 Credits!
+      </button>
+    `;
+    return;
+  }
 
   const assigned = planet.assignedDice;
 
@@ -1150,19 +1321,20 @@ function generateRandomDice(count = 10, packType = "standard", forcedFaction = n
     const sides = pickWeightedDie(pack.weights);
 
     // If faction is forced, find the matching power entry
-    let powerIndex;
+    let getPowerIndex;
     if (forcedFaction) {
-      powerIndex = powers.findIndex(p => p.name === forcedFaction);
+      getPowerIndex = powers.findIndex(p => p.name === forcedFaction);
     } else {
-      powerIndex = Math.floor(Math.random() * powers.length);
+      getPowerIndex = Math.floor(Math.random() * powers.length);
     }
 
-    const power = powers[powerIndex];
+    const power = powers[getPowerIndex];
 
     const die = {
       id: `D-${Date.now()}-${currentMap.nextDieId++}`,
       sides,
-      power: powerIndex,
+      power: power,
+      powerIndex: getPowerIndex,
       ownerId: ownerId,
       name: `${power.name} d${sides}`,
       color: power.color
@@ -1196,9 +1368,30 @@ function confirmDiceAssignment() {
 
   const player = currentMap.playersById[currentPlayerId];
 
-  const hex = currentMap.hexes.find(h => h.sectorId == ctx.sectorId);
+  // Prefer the active sector (works for Home System and normal sectors)
+  let hex = currentSectorView;
+
+  // Fallback: if called from world view, find the sector in the world map
+  if (!hex || hex.sectorId !== ctx.sectorId) {
+    hex = currentMap.hexes.find(h => h.sectorId == ctx.sectorId);
+  }
+
+  if (!hex) {
+    console.error("confirmDiceAssignment: sector not found:", ctx.sectorId);
+    return;
+  }
+
   const region = mapRegion[hex.region];
   const planet = hex.planets.find(p => p.id == ctx.planetId);
+
+  if (planet.isSpecialPlanet) {
+    console.warn("Cannot assign dice to special planets.");
+    return;
+  }
+  if (!canAssignDiceToPlanet(planet, currentPlayerId)) {
+    console.warn("Cannot assign dice here (locked moon or special planet).");
+    return;
+  }
 
   const oldSectorOwner = hex.sectorOwner;
   let sectorGain = 0;
@@ -1214,7 +1407,7 @@ function confirmDiceAssignment() {
     // ⭐ Find matching dice from player's availableDiceIds
     const candidates = [...player.availableDiceIds]
       .map(id => currentMap.diceList[id])
-      .filter(d => d.power === powerIndex && d.sides === targetSize);
+      .filter(d => d.powerIndex === powerIndex && d.sides === targetSize);
 
     if (candidates.length > 0) {
       // Pick one (random for now)
@@ -1270,6 +1463,10 @@ function confirmDiceAssignment() {
 }
 
 function calculateInfluenceGain(die, profile, roll) {
+  // Ignore specialPowers (powerIndex = null)
+  if (die.powerIndex === null) {
+    return Math.max(1, Math.floor(roll));
+  }
 
   // Convert faction names to indices
   const profileIndices = profile.map(name =>
@@ -1279,14 +1476,9 @@ function calculateInfluenceGain(die, profile, roll) {
   let modifiedRoll = roll;
 
   profileIndices.forEach(profilePowerIndex => {
-    if (profilePowerIndex === -1) {
-      return;
-    }
+    if (profilePowerIndex === -1) return;
 
-    const result = determineWinner(die.power, profilePowerIndex);
-
-    const dieName = powers[die.power].name;
-    const profileName = powers[profilePowerIndex].name;
+    const result = determineWinner(die.powerIndex, profilePowerIndex);
 
     if (result === "player") {
       modifiedRoll *= 2;
@@ -1296,9 +1488,7 @@ function calculateInfluenceGain(die, profile, roll) {
     }
   });
 
-  modifiedRoll = Math.max(1, Math.floor(modifiedRoll));
-
-  return modifiedRoll;
+  return Math.max(1, Math.floor(modifiedRoll));
 }
 
 function getSectorOwner(hex) {
@@ -1385,7 +1575,7 @@ function getFactionStrength(scope, powerIndex) {
     // scope.hex is the sector hex
     scope.hex.planets.forEach(planet => {
       planet.assignedDice.forEach(d => {
-        if (d.ownerId === ownerId && d.power === powerIndex) {
+        if (d.ownerId === ownerId && d.powerIndex === powerIndex) {
           total += d.sides;
         }
       });
@@ -1399,7 +1589,7 @@ function getFactionStrength(scope, powerIndex) {
       const hex = currentMap.hexes[sectorId];
       hex.planets.forEach(planet => {
         planet.assignedDice.forEach(d => {
-          if (d.ownerId === ownerId && d.power === powerIndex) {
+          if (d.ownerId === ownerId && d.powerIndex === powerIndex) {
             total += d.sides;
           }
         });
@@ -1440,15 +1630,29 @@ function showAvailableDice(selectionMode = false, showAll = false) {
   const matrix = Array.from({ length: powers.length }, () =>
     Array.from({ length: sizes.length }, () => [])
   );
+  diceIds.forEach(id => { // Convert IDs → dice objects
+    const die = currentMap.diceList[id];
+    if (!die) return;
+    if (die.powerIndex === null) return //skips specialPowers
 
-  // Convert IDs → dice objects
+    const powerIndex = die.powerIndex;
+    const sizeIndex = sizes.indexOf(die.sides);
+    matrix[powerIndex][sizeIndex].push(die);
+  });
+
+  // Build matrix of special dice lists
+  const specialMatrix = Array.from({ length: specialPowers.length }, () =>
+    Array.from({ length: sizes.length }, () => [])
+  );
   diceIds.forEach(id => {
     const die = currentMap.diceList[id];
     if (!die) return;
 
-    const powerIndex = die.power;
-    const sizeIndex = sizes.indexOf(die.sides);
-    matrix[powerIndex][sizeIndex].push(die);
+    if (die.powerIndex === null) {
+      const specialIndex = specialPowers.findIndex(sp => sp === die.power);
+      const sizeIndex = sizes.indexOf(die.sides);
+      specialMatrix[specialIndex][sizeIndex].push(die);
+    }
   });
 
   let html = `
@@ -1491,6 +1695,36 @@ function showAvailableDice(selectionMode = false, showAll = false) {
   });
 
   html += "</table>";
+
+  if (showAll) {
+  html += `
+    <h3>Special Dice</h3>
+    <table style="border-collapse: collapse; text-align: center; margin-top:10px;">
+      <tr>
+        <th style="padding: 6px; border: 1px solid #555;"></th>
+        ${sizes.map(s => `<th style="padding: 6px; border: 1px solid #555;">d${s}</th>`).join("")}
+      </tr>
+  `;
+
+  specialMatrix.forEach((row, spIndex) => {
+    const sp = specialPowers[spIndex];
+
+    html += `
+      <tr>
+        <td style="padding: 6px; border: 1px solid #555; color:${sp.color}; font-weight:bold;">
+          ${sp.name}
+        </td>
+        ${row.map((diceList, sizeIndex) => `
+          <td style="padding: 6px; border: 1px solid #555;">
+            ${diceList.length > 0 ? diceList.length : ""}
+          </td>
+        `).join("")}
+      </tr>
+    `;
+  });
+
+  html += "</table>";
+}
 
   if (selectionMode && !showAll) {
     html += `
@@ -1741,6 +1975,7 @@ function newGame() {
   const cpu = createPlayer("cpu-1", "CPU");
     currentMap.players.push(cpu);
     currentMap.playersById[cpu.id] = cpu;
+
   console.log("creating players",currentMap.playersById);
   
   currentMap.diceList = {};
@@ -1757,8 +1992,9 @@ function newGame() {
   });
   seedCpuEnclave("cpu-1", 10);
   console.log("creating dice");
+  createHomeSystem();
   drawMap(currentMap);
-  setupClick(currentMap);
+  setupClick();
 
   
   updateCurrencyDisplay();
@@ -1768,14 +2004,6 @@ function newGame() {
     <p>To get started, explore the galaxy by clicking on a hex on the map to the right. This is a Sector, where you will find planets ripe for conquest!</P>
     <p>Deploy your forces to the planets there to gain influence and claim ownership over Sectors or entire Regions!</p>
     <p>Play games to earn Credits, which can be used to purchase new dice packs that you can then assign to planets to gain even more influence!</p>
-    <h3>Starting Dice</h3>
-    <ul>
-        ${Object.values(currentMap.diceList).map(d => 
-        `<li style="color:${d.color}; font-weight:bold;">
-            ${d.name}
-        </li>`
-        ).join("")}
-    </ul>
   `;
 }
 
@@ -1812,7 +2040,7 @@ function loadGame() {
   mapRegion = currentMap.mapRegion;
 
   returnToWorldMap();
-  setupClick(currentMap);
+  setupClick();
 
   document.getElementById("hexInfo").innerHTML = `
     <h3>Game Loaded</h3>
@@ -1991,7 +2219,7 @@ function cpuPickBestDice(cpuId, factionName) {
   // - highest sides
   const scored = dice.map(d => {
     let score = d.sides;
-    if (powers[d.power].name === factionName) score += 20;
+    if (powers[d.powerIndex].name === factionName) score += 20;
     return { die: d, score };
   });
 
@@ -2032,7 +2260,6 @@ function cpuAssignDice(cpuId, hex, planet, dice) {
     setPoliticalProfile(region, { type: "region", region });
   });
 
-  //drawSectorMap(hex);
 }
 
 function cpuTakeTurn(cpuId) {
@@ -2055,10 +2282,125 @@ function cpuTakeTurn(cpuId) {
   };
 }
 
+// ------------------------------
+// 16. Home System
+// ------------------------------
 
+let homeSystem = null;
+function createHomeSystem() {
+  // Create a special sector object
+  homeSystem = {
+    sectorId: "Home System for " + currentMap.playersById[currentPlayerId].name,
+    name: "Home System",
+    sectorInfluence: { [currentPlayerId]: 0 },
+    sectorOwner: currentPlayerId,
+    hasAssignedDice: true,
+    ownerType: "player",
+    politicalProfile: ["None", "None", "None"],
+    lastPowerActivity: [],
+    region: -1,          // special region
+    planets: []
+  };
 
+  // Add one starter planet
+  homeSystem.planets.push({
+    id: "Origin",
+    name: "Origin",
+    imageId: "Planet2",
+    hasPosition: true,
+    q: 0,
+    r: 0,
+    assignedDice: [],
+    hasAssignedDice: true,
+    owner: currentPlayerId,
+    ownerType: "player",
+  });
 
+  //add starter dice
+  for (let i=0;i<3;i++){
+    const die = {
+      id: "UNO-D4-" + i,
+      sides: 4,
+      power: specialPowers[0],
+      powerIndex: null,
+      ownerId: currentPlayerId,
+      name: "UNO d4",
+      color: "#ccc",
+    };
 
+    homeSystem.planets[0].assignedDice.push(die);
+    currentMap.playersById[die.ownerId].ownedDiceIds.add(die.id);
+    currentMap.diceList[die.id] = die;
+  }
+
+  // Add tutorial planet
+  homeSystem.planets.push({
+    id: "New Origin",
+    name: "New Origin",
+    imageId: "Planet6",
+    hasPosition: false,
+    assignedDice: [],
+    hasAssignedDice: false,
+    owner: null,
+    ownerType: null,
+  });
+
+  // Add Duel Planet
+
+  homeSystem.planets.push({
+    id: "Rebel Base",
+    name: "Rebel Base",
+    imageId: "Planet3",
+    hasPosition: false,
+    assignedDice: [],
+    hasAssignedDice: true,
+    owner: null,
+    ownerType: null,
+    specialPlanetType: "Duel",
+    specialPlanetLocked: true,
+  });
+  homeSystem.planets.push({
+    id: "Blockade",
+    name: "Blockade",
+    imageId: "Station7",
+    parentId: "Rebel Base",
+    hasPosition: false,
+    assignedDice: [],
+    hasAssignedDice: false,
+    owner: null,
+    ownerType: null
+  });
+  //add CPU starter dice
+  for (let i=0;i<3;i++){
+    const die = {
+      id: "UNO-D4-" + i,
+      sides: 4,
+      power: specialPowers[0],
+      powerIndex: null,
+      ownerId: "cpu-1",
+      name: "UNO d4",
+      color: "#ccc",
+    };
+
+    homeSystem.planets[2].assignedDice.push(die);
+    currentMap.playersById[die.ownerId].ownedDiceIds.add(die.id);
+    currentMap.diceList[die.id] = die;
+  }
+}
+
+function showHomeSystem() {
+  if (!homeSystem) return;  // safety
+
+  currentViewMode = "sector";
+  currentSectorView = homeSystem;
+
+  // Reset camera offset so Home System is centered
+  viewOffsetX = 0;
+  viewOffsetY = 0;
+
+  renderSectorInfo(homeSystem);
+  drawSectorMap(homeSystem);
+}
 
 </script>
 <script src="duel.js"></script>
